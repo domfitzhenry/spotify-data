@@ -1,0 +1,184 @@
+---
+title: "Spotify Data"
+format:
+  html: 
+    theme: darkly
+    backgroundcolor: '#0d1117'
+    page-layout: full
+editor: visual
+echo: false
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+
+library(tidyverse)
+
+load('data/spotify_play_history.RData')
+
+# Define colours used across multiple figures
+bg_col <- '#0d1117'
+txt_col <- '#e6edf3'
+faint_col <- '#161b22'
+
+spotify_green <- '#1DB954'
+
+# Do some transforms - this might move later
+
+last_date <- max(date(plays$ts))
+
+date_df <- 
+  data.frame(
+    date = seq.Date(last_date - years(1), last_date, by = 'day')
+  ) %>%
+  mutate(
+    weekday = wday(date, label = TRUE),
+    week_start = floor_date(date, "week")
+  )
+
+
+plays_by_date <-
+  mutate(plays, date = date(ts)) %>%
+  right_join(date_df, by = 'date') %>%
+  group_by(week_start, weekday) %>%
+  summarise(
+    tracks_played = sum(!is.na(track.id)),
+    hours_played = coalesce(round(sum(ms_played) / 3600000, 2), 0.0),
+    .groups = 'drop'
+  )
+
+plays_by_hour <- 
+  mutate(
+    plays,
+    hour = hour(ts),
+    date = date(ts)
+  ) %>%
+  group_by(hour, date) %>%
+  # Determine what percentage of the hour was played each day
+  summarise(
+    pct_played = coalesce(round(sum(ms_played) / 3600000, 2), 0.0), 
+    .groups = 'drop_last'
+  ) %>%
+  # Determine the mean percentage of the hour played
+  summarise(avg_pct_played = mean(pct_played))
+  
+```
+
+## Quarto
+
+Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+
+
+
+```{r}
+#| label: clock24
+#| fig-align: center
+#| fig-width: 1.7
+#| fig-height: 1.8
+#| fig-format: svg
+#| dev.args: !expr 'list(bg = bg_col)'
+
+
+skip_3 <- function(x) x[seq_along(x) %% 3 == 0]
+
+plays_by_hour %>%
+  ggplot(aes(x = as.factor(hour), y = avg_pct_played)) +
+  geom_bar(
+    stat = 'identity', width = 1,
+    colour = bg_col, fill = spotify_green
+  ) +
+  coord_polar(start = -0.65) +
+  scale_y_continuous(breaks = NULL, limits = c(-0.3, 1)) +
+  scale_x_discrete(labels = str_pad(seq(0,23,3), 2, pad = '0'), breaks = skip_3) +
+    theme(
+    axis.text.x = element_text(colour = txt_col),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_blank(),
+
+    plot.background = element_rect(colour = bg_col, fill = bg_col),
+
+    panel.background = element_rect(colour = bg_col, fill = bg_col),
+    panel.border = element_blank(),
+    panel.grid.major.x  = element_line(colour = faint_col),
+    panel.grid.major.y = element_blank()
+  )
+
+```
+
+
+```{r}
+#| label: git-calendar
+#| fig-align: center
+#| fig-width: 9
+#| fig-height: 1.8
+#| fig-format: svg
+  
+load('data/git_calendar.RData')
+
+# For our calendar, we want 5 discrete colours in hours_played.
+tile_cols <- c(faint_col, '#0e4429', '#006d32', '#26a641', '#39d353')
+
+# Choose appropriate values for breaks in bin colour
+tile_bin <- quantile(plays_by_date$hours_played, c(0, 0.25, 0.5, 0.75, 0.95))
+
+# This is used to print every other label for the weekday axis
+skip_2 <- function(x) x[seq_along(x) %% 2 == 0]
+
+# Next lets construct the plot
+plays_by_date %>%
+  ggplot(aes(x = week_start, y = fct_rev(weekday), fill = hours_played)) +
+  geom_tile(colour = bg_col, linejoin = 'round', linewidth = 2) +
+  
+  scale_x_date(
+    expand = expansion(add = 2),
+    position = 'top',
+    date_breaks = "1 month",
+    date_labels = '%b') +
+  scale_y_discrete(breaks = skip_2) +
+  scale_fill_stepsn(
+    colours = tile_cols,
+    breaks = tile_bin,
+    values = scales::rescale(tile_bin),
+    guide = 'legend',
+    right = FALSE
+  ) +
+  
+  # There is surely a better way of positioning the legend labels
+  annotate(
+    'text', label = c('Less', 'More'),
+    x = c(
+      max(plays_by_date$week_start) - weeks(8), 
+      max(plays_by_date$week_start) - weeks(1)
+    ), 
+    y = -0.4, 
+    colour = '#7d8590', hjust = 1, size = 3
+  ) +
+  coord_cartesian(ylim = c(1, 7), clip = "off") +
+  theme(
+    axis.text = element_text(colour = txt_col),
+    axis.text.y = element_text(hjust = 0, margin = margin()),
+    axis.ticks = element_blank(),
+    axis.title = element_blank(),
+
+    legend.background = element_blank(),
+    legend.box.spacing = unit(1, 'mm'),
+    legend.direction = 'horizontal',
+    legend.justification = "right",
+    legend.key = element_blank(),
+    legend.key.size = unit(5, 'mm'),
+    legend.margin = margin(r = 15, unit = 'mm'),
+    legend.position = 'bottom',
+    legend.spacing.x = unit(-0.5, 'mm'),
+    legend.text = element_blank(),
+    legend.title = element_blank(),
+
+    plot.background = element_rect(colour = bg_col, fill = bg_col),
+    
+    panel.background = element_rect(colour = bg_col, fill = bg_col),
+    panel.border = element_blank(),
+    panel.grid = element_blank()
+  )
+```
