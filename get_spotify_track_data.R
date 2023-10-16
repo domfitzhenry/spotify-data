@@ -4,10 +4,10 @@
 # Parameters ----
 
 # Set this to true to call Spotify API
-force_refresh <- FALSE
+force_refresh <- TRUE
 
 # The list of columns that are retained from the JSON files
-retain_cols <- c('ts', 'username', 'ms_played', 'reason_start', 'reason_end')
+retain_cols <- c('ts', 'username', 'reason_start', 'reason_end')
 
 # Where we expect to find the RData file from prior executions
 db_path <- 'data/spotify_play_history.RData'
@@ -29,14 +29,15 @@ current_plays <-
   map_df(~read_json(path = ., simplifyVector = TRUE)) %>%
   filter(!is.na(spotify_track_uri)) %>%
   mutate(
-    ts = with_tz(strptime(ts, '%Y-%m-%dT%H:%M:%S', tz="GMT"), Sys.timezone()),
-    track.id = str_remove(spotify_track_uri, 'spotify:track:')
+    ts = with_tz(strptime(ts, '%Y-%m-%dT%H:%M:%S', tz="UTC"), Sys.timezone()),
+    track.id = str_remove(spotify_track_uri, 'spotify:track:'),
+    duration_played = dmilliseconds(ms_played)
   ) %>%
-  select(all_of(retain_cols), track.id)
+  select(all_of(retain_cols), track.id, duration_played)
   
 
 # RData file from prior executions
-if (file.exists(db_path)) load('data/spotify_play_history.RData')
+if (file.exists(db_path)) load(db_path)
 
 
 if (exists('plays')) {
@@ -108,7 +109,16 @@ if (force_refresh) {
       id, external_ids.isrc, name, album.release_date, album.id, duration_ms, 
       popularity, explicit, artists
     ) %>%
-    rename(track.id = id)
+    mutate(
+      duration = dmilliseconds(duration_ms),
+      album.release_date = 
+        parse_date_time(album.release_date, c('y', 'ym', 'ymd'))
+    ) %>%
+    rename(
+      track.id = id,
+      track_name = name,
+      track_popularity = popularity
+    )
   
   # M-M mapping for artist - track
   artists_tracks <- 
@@ -126,7 +136,8 @@ if (force_refresh) {
     select(
       id, loudness, tempo, time_signature, key, mode, acousticness, 
       danceability, energy, speechiness, instrumentalness, liveness, valence
-    )
+    ) %>%
+    rename(track.id = id)
   
   # Get album details
   album <- 
@@ -135,7 +146,11 @@ if (force_refresh) {
     select(
       id, external_ids.upc, label, name, popularity
     ) %>%
-    rename(album.id = id)
+    rename(
+      album.id = id,
+      album_name = name,
+      album_popularity = popularity
+    )
 
   # Get all artist details
   artist <- 
@@ -169,7 +184,10 @@ save(
   user, file = db_path
 )
 
-remove(t, access_token, db_path, force_refresh, retain_cols, call_by_chunks)
+remove(
+  t, access_token, db_path, force_refresh, retain_cols, call_by_chunks, 
+  current_plays
+)
 
 message('Data Loaded.')
 

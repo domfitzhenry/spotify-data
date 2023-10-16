@@ -2,9 +2,10 @@
 title: "Spotify Data"
 format:
   html: 
-    theme: darkly
-    backgroundcolor: '#0d1117'
+    theme: cyborg
+    fig-cap-location: top
     page-layout: full
+    fontsize: 16px
 editor: visual
 echo: false
 ---
@@ -16,116 +17,35 @@ echo: false
 
 library(tidyverse)
 
-load('data/spotify_play_history.RData')
+#load('data/spotify_play_history.RData')
+load('data/summary_date_data.RData')
 
-# Define colours used across multiple figures
-bg_col <- '#0d1117'
+
+# Colours ----
+bg_col <- '#060606'
 txt_col <- '#e6edf3'
 faint_col <- '#161b22'
 
 spotify_green <- '#1DB954'
-
-# Do some transforms - this might move later
-
-last_date <- max(date(plays$ts))
-
-date_df <- 
-  data.frame(
-    date = seq.Date(last_date - years(1), last_date, by = 'day')
-  ) %>%
-  mutate(
-    weekday = wday(date, label = TRUE),
-    week_start = floor_date(date, "week")
-  )
-
-
-plays_by_date <-
-  mutate(plays, date = date(ts)) %>%
-  right_join(date_df, by = 'date') %>%
-  group_by(week_start, weekday) %>%
-  summarise(
-    tracks_played = sum(!is.na(track.id)),
-    hours_played = coalesce(round(sum(ms_played) / 3600000, 2), 0.0),
-    .groups = 'drop'
-  )
-
-plays_by_hour <- 
-  mutate(
-    plays,
-    hour = hour(ts),
-    date = date(ts)
-  ) %>%
-  group_by(hour, date) %>%
-  # Determine what percentage of the hour was played each day
-  summarise(
-    pct_played = coalesce(round(sum(ms_played) / 3600000, 2), 0.0), 
-    .groups = 'drop_last'
-  ) %>%
-  # Determine the mean percentage of the hour played
-  summarise(avg_pct_played = mean(pct_played))
   
 ```
 
-## Quarto
-
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
-
-
-
-```{r}
-#| label: clock24
-#| fig-align: center
-#| fig-width: 1.7
-#| fig-height: 1.8
-#| fig-format: svg
-#| dev.args: !expr 'list(bg = bg_col)'
-
-
-skip_3 <- function(x) x[seq_along(x) %% 3 == 0]
-
-plays_by_hour %>%
-  ggplot(aes(x = as.factor(hour), y = avg_pct_played)) +
-  geom_bar(
-    stat = 'identity', width = 1,
-    colour = bg_col, fill = spotify_green
-  ) +
-  coord_polar(start = -0.65) +
-  scale_y_continuous(breaks = NULL, limits = c(-0.3, 1)) +
-  scale_x_discrete(labels = str_pad(seq(0,23,3), 2, pad = '0'), breaks = skip_3) +
-    theme(
-    axis.text.x = element_text(colour = txt_col),
-    axis.text.y = element_blank(),
-    axis.ticks = element_blank(),
-    axis.title = element_blank(),
-
-    plot.background = element_rect(colour = bg_col, fill = bg_col),
-
-    panel.background = element_rect(colour = bg_col, fill = bg_col),
-    panel.border = element_blank(),
-    panel.grid.major.x  = element_line(colour = faint_col),
-    panel.grid.major.y = element_blank()
-  )
-
-```
-
+## From `r first_date` to `r last_date`
 
 ```{r}
 #| label: git-calendar
 #| fig-align: center
-#| fig-width: 9
-#| fig-height: 1.8
+#| fig-cap: "Daily listening activity in the style of Github contributions"
+#| fig-width: 13.5
+#| fig-height: 2.7
 #| fig-format: svg
-  
-load('data/git_calendar.RData')
+#| cap-location: top
 
 # For our calendar, we want 5 discrete colours in hours_played.
 tile_cols <- c(faint_col, '#0e4429', '#006d32', '#26a641', '#39d353')
 
 # Choose appropriate values for breaks in bin colour
 tile_bin <- quantile(plays_by_date$hours_played, c(0, 0.25, 0.5, 0.75, 0.95))
-
-# This is used to print every other label for the weekday axis
-skip_2 <- function(x) x[seq_along(x) %% 2 == 0]
 
 # Next lets construct the plot
 plays_by_date %>%
@@ -137,7 +57,8 @@ plays_by_date %>%
     position = 'top',
     date_breaks = "1 month",
     date_labels = '%b') +
-  scale_y_discrete(breaks = skip_2) +
+  # Print every other label for the weekday axis
+  scale_y_discrete(breaks = function(x) x[seq_along(x) %% 2 == 0]) +
   scale_fill_stepsn(
     colours = tile_cols,
     breaks = tile_bin,
@@ -149,16 +70,17 @@ plays_by_date %>%
   # There is surely a better way of positioning the legend labels
   annotate(
     'text', label = c('Less', 'More'),
-    x = c(
-      max(plays_by_date$week_start) - weeks(8), 
-      max(plays_by_date$week_start) - weeks(1)
-    ), 
-    y = -0.4, 
-    colour = '#7d8590', hjust = 1, size = 3
+    x = 
+      c(
+      max(plays_by_date$week_start) - days(47),
+      max(plays_by_date$week_start)
+    ),
+    y = -0.35, 
+    colour = '#7d8590', hjust = 1, size = 4
   ) +
   coord_cartesian(ylim = c(1, 7), clip = "off") +
   theme(
-    axis.text = element_text(colour = txt_col),
+    axis.text = element_text(colour = txt_col, size = 12),
     axis.text.y = element_text(hjust = 0, margin = margin()),
     axis.ticks = element_blank(),
     axis.title = element_blank(),
@@ -168,10 +90,10 @@ plays_by_date %>%
     legend.direction = 'horizontal',
     legend.justification = "right",
     legend.key = element_blank(),
-    legend.key.size = unit(5, 'mm'),
+    legend.key.size = unit(8, 'mm'),
     legend.margin = margin(r = 15, unit = 'mm'),
     legend.position = 'bottom',
-    legend.spacing.x = unit(-0.5, 'mm'),
+    legend.spacing.x = unit(-1, 'mm'),
     legend.text = element_blank(),
     legend.title = element_blank(),
 
@@ -182,3 +104,59 @@ plays_by_date %>%
     panel.grid = element_blank()
   )
 ```
+
+
+
+:::::{layout="[-5, 50, -10, 30, -5]"}
+
+|          |           Last Year |         All-Time |
+|---------:|--------------------:|-----------------:|
+| Streams  |`r current_streams`  |`r total_streams` |
+| Duration |`r current_duration` |`r total_duration`|
+| Tracks   |`r current_tracks`   |`r total_tracks`  |
+| Albums   |`r current_albums`   |`r total_albums`  |
+| Artists  |`r current_artists`  |`r total_artists` |
+
+: Listening Overview {.hover tbl-colwidths="[20, 40, 40]"}
+
+```{r}
+#| label: clock24
+#| fig-align: right
+#| fig-width: 3
+#| fig-height: 3
+#| fig-cap: "Activity by time of day proportional to the most active hour"
+#| fig-format: svg
+#| dev.args: !expr 'list(bg = bg_col)'
+
+
+plays_by_hour %>%
+  ggplot(aes(x = as.factor(hour), y = norm_duration)) +
+  geom_bar(
+    stat = 'identity', width = 1,
+    colour = bg_col, fill = spotify_green
+  ) +
+  coord_polar(start = 3.01, clip = 'off') +
+  scale_y_continuous(breaks = NULL, limits = c(-0.2, 1)) +
+  scale_x_discrete(
+    breaks = seq(0,23,3),
+    labels = str_pad(seq(0,2300,300), 4, pad = '0')) +
+  theme(
+    axis.text.x = element_text(colour = txt_col),
+    axis.text.y = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_blank(),
+    
+    plot.background = element_rect(colour = bg_col, fill = bg_col),
+    
+    panel.background = element_rect(colour = bg_col, fill = bg_col),
+    panel.border = element_blank(),
+    panel.grid.major.x  = element_line(colour = faint_col),
+    panel.grid.major.y = element_line(colour = faint_col),
+  )
+
+```
+
+:::::
+
+
+
