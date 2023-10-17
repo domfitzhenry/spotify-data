@@ -17,8 +17,11 @@ echo: false
 
 library(tidyverse)
 
-#load('data/spotify_play_history.RData')
+
 load('data/summary_date_data.RData')
+
+# Unpack the list for convenience
+list2env(play_summary, .GlobalEnv)
 
 
 # Colours ----

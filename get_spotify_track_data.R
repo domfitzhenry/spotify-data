@@ -4,10 +4,13 @@
 # Parameters ----
 
 # Set this to true to call Spotify API
-force_refresh <- TRUE
+force_refresh <- FALSE
 
 # The list of columns that are retained from the JSON files
-retain_cols <- c('ts', 'username', 'reason_start', 'reason_end')
+retain_cols <- 
+  c('ts', 'username', 'reason_start', 'reason_end',
+    # These are transformed/renamed from the response - id and duration_ms
+    'track.id', 'duration_played')
 
 # Where we expect to find the RData file from prior executions
 db_path <- 'data/spotify_play_history.RData'
@@ -33,7 +36,7 @@ current_plays <-
     track.id = str_remove(spotify_track_uri, 'spotify:track:'),
     duration_played = dmilliseconds(ms_played)
   ) %>%
-  select(all_of(retain_cols), track.id, duration_played)
+  select(all_of(retain_cols))
   
 
 # RData file from prior executions
@@ -105,31 +108,21 @@ if (force_refresh) {
   # Get all track details
   track <- 
     call_by_chunks(t, get_tracks, access_token) %>%
-    select(
-      id, external_ids.isrc, name, album.release_date, album.id, duration_ms, 
-      popularity, explicit, artists
-    ) %>%
     mutate(
       duration = dmilliseconds(duration_ms),
       album.release_date = 
         parse_date_time(album.release_date, c('y', 'ym', 'ymd'))
+    ) %>%
+    hoist(artists, artist.id = 'id') %>%
+    select(
+      id, external_ids.isrc, name, album.release_date, album.id, duration, 
+      popularity, explicit, artist.id
     ) %>%
     rename(
       track.id = id,
       track_name = name,
       track_popularity = popularity
     )
-  
-  # M-M mapping for artist - track
-  artists_tracks <- 
-    select(track, track.id, artists) %>%
-    unnest_longer(artists) %>%
-    transmute(
-      track.id = track.id,
-      artist.id = artists$id
-    )
-    
-  track <- select(track, !artists)
   
   track_features <- 
     call_by_chunks(t, get_track_audio_features, access_token, 100) %>%
@@ -154,20 +147,16 @@ if (force_refresh) {
 
   # Get all artist details
   artist <- 
-    distinct(artists_tracks, artist.id) %>%
+    unnest_longer(track, artist.id) %>%
+    distinct(artist.id) %>%
     call_by_chunks(get_artists, access_token) %>%
     select(id, name, popularity, followers.total, genres) %>%
     rename(
       artist.id = id,
+      artist_name = name,
+      artist_popularity = popularity,
       followers = followers.total
     )
-  
-  # Create M-M artist genre mapping
-  artists_genres <- select(artist, artist.id, genres) %>%
-    unnest_longer(genres)
-  
-  # Remove genre column from artist
-  artist <- select(artist, !genres)
   
   # For user display names
   user <- 
@@ -180,8 +169,8 @@ if (force_refresh) {
 
 # Save output and cleanup
 save(
-  plays, track, track_features, album, artist, artists_tracks, artists_genres,
-  user, file = db_path
+  plays, track, track_features, album, artist, user, 
+  file = db_path
 )
 
 remove(

@@ -27,46 +27,51 @@ user_plays <-
 last_date <- max(date(user_plays$ts))
 first_date <- last_date - years(1)
 
-
-current_user_plays <- filter(user_plays, ts >= first_date)
+user_plays <- mutate(user_plays, is_current = first_date <= ts)
 
 
 # Summary numbers ----
 
-## Total streams
-total_streams <- filter(user_plays, track_played) %>% nrow()
+play_summary <- list()
 
-current_streams <- filter(current_user_plays, track_played) %>% nrow()
+play_summary['total_streams'] <- 
+  filter(user_plays, track_played) %>% nrow()
+
+play_summary['current_streams'] <- 
+  filter(user_plays, track_played, is_current) %>% nrow()
 
 
-## Total tracks
-total_tracks <- filter(user_plays, track_played) %>% 
+play_summary['total_tracks'] <- 
+  filter(user_plays, track_played) %>% 
   distinct(track.id) %>%
   nrow()
 
-current_tracks <- filter(current_user_plays, track_played) %>% 
+play_summary['current_tracks'] <- 
+  filter(user_plays, track_played, is_current) %>% 
   distinct(track.id) %>%
   nrow()
 
 
-## Total artists
-total_artists <- filter(user_plays, track_played) %>% 
-  inner_join(artists_tracks, by = 'track.id', relationship = 'many-to-many') %>%
+play_summary['total_artists'] <- 
+  filter(user_plays, track_played) %>% 
+  unnest_longer(artist.id) %>%
   distinct(artist.id) %>%
   nrow()
 
-current_artists <- filter(current_user_plays, track_played) %>% 
-  inner_join(artists_tracks, by = 'track.id', relationship = 'many-to-many') %>%
+play_summary['current_artists'] <- 
+  filter(user_plays, track_played, is_current) %>% 
+  unnest_longer(artist.id) %>%
   distinct(artist.id) %>%
   nrow()
 
 
-## Total albums
-total_albums <- filter(user_plays, track_played) %>% 
+play_summary['total_albums'] <- 
+  filter(user_plays, track_played) %>% 
   distinct(album.id) %>%
   nrow()
 
-current_albums <- filter(current_user_plays, track_played) %>% 
+play_summary['current_albums'] <- 
+  filter(user_plays, track_played, is_current) %>% 
   distinct(album.id) %>%
   nrow()
 
@@ -100,8 +105,15 @@ pretty_seconds <- function(secs) {
 }
 
 
-total_duration <- pretty_seconds(sum(user_plays$duration_played))
-current_duration <- pretty_seconds(sum(current_user_plays$duration_played))
+play_summary['total_duration'] <- 
+  sum(user_plays$duration_played) %>%
+  pretty_seconds()
+
+play_summary['current_duration'] <- 
+  filter(user_plays, is_current) %>% 
+  select(duration_played) %>%
+  sum() %>%
+  pretty_seconds()
 
 
 # Date transforms ----
@@ -117,11 +129,11 @@ date_df <-
 
 
 plays_by_date <-
-  mutate(current_user_plays, date = date(ts)) %>%
+  filter(user_plays, is_current) %>% 
+  mutate(date = date(ts)) %>%
   right_join(date_df, by = 'date') %>%
   group_by(week_start, weekday) %>%
   summarise(
-    tracks_played = sum(!is.na(track.id)),
     hours_played = coalesce(round(sum(duration_played) / 3600, 2), 0.0),
     .groups = 'drop'
   )
@@ -129,8 +141,8 @@ plays_by_date <-
 
 
 plays_by_hour <- 
+  filter(user_plays, is_current) %>% 
   mutate(
-    current_user_plays,
     start_time = ts,
     end_time = ts + duration_played,
     hour_start = map2(
@@ -157,12 +169,45 @@ plays_by_hour <-
 
 # Save data to be loaded to qmd for viz
 save(
-  last_date, first_date,
-  current_streams, current_tracks, current_albums, current_artists, current_duration,
-  total_streams, total_tracks, total_albums, total_artists, total_duration,
-  plays_by_date, plays_by_hour,
+  last_date, first_date, play_summary, plays_by_date, plays_by_hour,
   file = 'data/summary_date_data.RData'
 )
 
 
 
+# What we listened to ----
+
+
+
+# Track Ranking
+track_ranks <- 
+  filter(user_plays, track_played) %>%
+  group_by(track.id) %>%
+  summarise(
+    all_plays = n(),
+    current_plays = sum(is_current)
+  ) %>%
+  inner_join(track, by = 'track.id') %>%
+  mutate(
+    all_rank = min_rank(desc(all_plays)),
+    current_rank = min_rank(desc(current_plays)),
+    rank_diff = all_rank - current_rank
+  ) %>%
+  select(
+    track_name, track_popularity, current_plays, current_rank, all_plays,
+    all_rank, rank_diff, track.id, album.id, artist.id
+  )
+
+
+# Top 100
+track_ranks %>%
+  filter(current_rank <= 100) %>%
+  arrange(current_rank) %>%
+  mutate(
+    artists = map_chr(
+      artist.id, 
+      function(a) str_flatten_comma(
+        artist[artist$artist.id %in% a, 'artist_name'])
+      )
+  ) %>%
+  select(current_rank, track_name, artists, current_plays, all_plays, rank_diff, track_popularity)
