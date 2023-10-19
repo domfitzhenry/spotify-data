@@ -1,3 +1,7 @@
+library(tidyverse)
+library(jsonlite)
+library(spotifyr)
+
 # Data on track plays is held in endsong_# files, to start with we need to pull
 # all of these into a dataframe.
 
@@ -79,7 +83,7 @@ call_by_chunks <- function(ids, FUN, token, n = 50, sleep = 0.1){
   
   for (i in seq(1, length(chunks))) {
     r <- FUN(chunks[i], authorization = token)
-    result <- rbind(result, r)
+    result <- bind_rows(result, r)
     setTxtProgressBar(pb, i)
     Sys.sleep(sleep)
   }

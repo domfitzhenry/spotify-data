@@ -1,6 +1,6 @@
 library(tidyverse)
-library(jsonlite)
-library(spotifyr)
+
+
 
 
 # This file reads the data, and potentially pulls a lot of data from Spotify
@@ -10,7 +10,7 @@ source('get_spotify_track_data.R')
 # Generate datasets for the user that will be loaded and referenced in the qmd
 
 # User ----
-u <- 'xm44d9m4rimzpbr0riuihsw0w'
+u <- '371m50txrsfipmk1senr6jcn4'
 
 # This will hold a filtered and transformed plays dataset used for the remaining
 # analysis. When counting the number of plays of a track, we will exclude any
@@ -98,7 +98,7 @@ pretty_seconds <- function(secs) {
     result <- paste0(
       "~", round(secs / SECONDS_IN_ONE[unit_index], 2), " ", 
       names(SECONDS_IN_ONE)[unit_index], 's'
-    )
+      )
   }
   
   return(result)
@@ -121,7 +121,7 @@ play_summary['current_duration'] <-
 date_df <- 
   data.frame(
     date = seq.Date(first_date, last_date, by = 'day')
-  ) %>%
+    ) %>%
   mutate(
     weekday = wday(date, label = TRUE),
     week_start = floor_date(date, "week")
@@ -149,19 +149,19 @@ plays_by_hour <-
       floor_date(start_time, unit = 'hours'),
       floor_date(end_time, unit = 'hours'),
       seq.POSIXt, by = 'hours'
-    )
-  ) %>%
+      )
+    ) %>%
   unnest(cols = c('hour_start')) %>%
   mutate(
     hour_end = hour_start + dhours(1),
     duration_in_hour = 
       pmin(hour_end, end_time) - pmax(hour_start, start_time),
     hour = as.factor(hour(hour_start))
-  ) %>%
+    ) %>%
   group_by(hour) %>%
   summarise(
     duration = sum(duration_in_hour)
-  ) %>%
+   ) %>%
   mutate(
     norm_duration = seconds(duration) / seconds(max(duration))
   )
@@ -178,36 +178,110 @@ save(
 # What we listened to ----
 
 
+## Ordered Tables ----
 
-# Track Ranking
-track_ranks <- 
+### Tracks
+top_tracks <-
   filter(user_plays, track_played) %>%
   group_by(track.id) %>%
   summarise(
     all_plays = n(),
-    current_plays = sum(is_current)
+    current_plays = sum(is_current),
+    first_listen = min(ts)
   ) %>%
+  filter(all_plays >= 5) %>%
   inner_join(track, by = 'track.id') %>%
   mutate(
-    all_rank = min_rank(desc(all_plays)),
-    current_rank = min_rank(desc(current_plays)),
-    rank_diff = all_rank - current_rank
-  ) %>%
-  select(
-    track_name, track_popularity, current_plays, current_rank, all_plays,
-    all_rank, rank_diff, track.id, album.id, artist.id
-  )
-
-
-# Top 100
-track_ranks %>%
-  filter(current_rank <= 100) %>%
-  arrange(current_rank) %>%
-  mutate(
-    artists = map_chr(
+    artist_names = 
+      map_chr(
       artist.id, 
       function(a) str_flatten_comma(
         artist[artist$artist.id %in% a, 'artist_name'])
+      ),
+    all_rank = n() - 
+      row_number(pick(all_plays, current_plays, track_popularity)) + 1,
+    current_rank =  n() - 
+      row_number(pick(current_plays, all_plays, track_popularity)) + 1,
+    
+    rank_diff = all_rank - current_rank,
+    track_url = paste0('http://open.spotify.com/track/', track.id),
+    ) %>%
+  arrange(current_rank) %>%
+  select(
+    rank_diff, current_rank, track_name, artist_names, first_listen, 
+    current_plays, all_plays, track_popularity, track_url
+  )
+
+
+
+### Artists
+top_artists <- 
+  filter(user_plays, track_played) %>%
+  unnest_longer(artist.id) %>%
+  group_by(artist.id) %>%
+  summarise(
+    all_plays = n(),
+    current_plays = sum(is_current),
+    first_listen = min(ts)
+    ) %>%
+  filter(all_plays >= 5) %>%
+  inner_join(artist, by = 'artist.id') %>%
+  mutate(
+    all_rank = n() - row_number(
+      pick(all_plays, current_plays, artist_popularity)
+      ) + 1,
+    current_rank =  n() - row_number(
+      pick(current_plays, all_plays, artist_popularity)
+      ) + 1,
+    rank_diff = all_rank - current_rank,
+    artist_url = paste0('http://open.spotify.com/artist/', artist.id),
+    ) %>%
+  arrange(current_rank) %>%
+  select(
+    rank_diff, current_rank, artist_name, first_listen, 
+    current_plays, all_plays, followers, artist_popularity, artist_url
+  )
+
+
+### Albums
+top_albums <- 
+  filter(user_plays, track_played) %>%
+  mutate(
+    artist_names = 
+      map_chr(
+        artist.id, 
+        function(a) str_flatten_comma(
+          artist[artist$artist.id %in% a, 'artist_name'])
       )
-  ) %>%
-  select(current_rank, track_name, artists, current_plays, all_plays, rank_diff, track_popularity)
+    ) %>%
+  group_by(album.id, artist_names) %>%
+  summarise(
+    all_plays = n(),
+    current_plays = sum(is_current),
+    first_listen = min(ts),
+    .groups = 'drop'
+    ) %>%
+  filter(all_plays >= 5) %>%
+  inner_join(album, by = 'album.id') %>%
+  mutate(
+    all_rank = n() - 
+      row_number(pick(all_plays, current_plays, album_popularity)) + 1,
+    current_rank =  n() - 
+      row_number(pick(current_plays, all_plays, album_popularity)) + 1,
+    
+    rank_diff = all_rank - current_rank,
+    album_url = paste0('http://open.spotify.com/album/', album.id),
+    ) %>%
+  arrange(current_rank) %>%
+  select(
+    current_rank, rank_diff, album_name, artist_names, first_listen, 
+    current_plays, all_plays, album_popularity, album_url
+  )
+
+
+
+save(
+  top_tracks, top_artists, top_albums,
+  file = 'data/top_things.RData'
+)
+

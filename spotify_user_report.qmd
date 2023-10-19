@@ -16,9 +16,11 @@ echo: false
 
 
 library(tidyverse)
-
+library(reactable)
+library(htmltools)
 
 load('data/summary_date_data.RData')
+load('data/top_things.RData')
 
 # Unpack the list for convenience
 list2env(play_summary, .GlobalEnv)
@@ -26,14 +28,101 @@ list2env(play_summary, .GlobalEnv)
 
 # Colours ----
 bg_col <- '#060606'
-txt_col <- '#e6edf3'
 faint_col <- '#161b22'
 
+txt_col <- '#e6edf3'
+txt_light_col <- '#adafae'
+
 spotify_green <- '#1DB954'
+
+
+# Reactable Utilities ----
+
+
+trend_indicator <- function(value = 0) {
+  args <- list(role = 'img', title = value)
+  
+  if (value == 0) {
+    args <- c(args, list("–", style = "color: #666; font-weight: 700"))
+  } else if (value > 0) {
+    args <- c(args, list(shiny::icon("caret-up"), style = "color: #1ed760"))
+  } else if (value < 0) {
+    args <- c(args, list(shiny::icon("caret-down"), style = "color: #cd1a2b"))
+  }
+  do.call(span, args)
+}
+
+
+# Default theme
+options(
+  reactable.theme = reactableTheme(
+    color = txt_col,
+    backgroundColor = bg_col,
+    borderColor = faint_col,
+    
+    borderWidth = '1px',
+    highlightColor = 'rgba(255, 255, 255, 0.1)',
+    cellPadding = '10px 8px',
+    style = list(
+      fontFamily = 'Work Sans, Helvetica Neue, Helvetica, Arial, sans-serif',
+      fontSize = '0.875rem',
+      'a' = list(
+        color = txt_col,
+        textDecoration = 'none',
+        '&:hover, &:focus' = list(
+          textDecoration = 'underline',
+          textDecorationThickness = '1px'
+        )
+      ),
+      '.number' = list(
+        color = txt_col,
+        fontFamily = 'Source Code Pro, Consolas, Monaco, monospace'
+      ),
+      '.tag' = list(
+        padding = '0.125rem 0.25rem',
+        color = 'hsl(0, 0%, 40%)',
+        fontSize = '0.75rem',
+        border = '1px solid hsl(0, 0%, 24%)',
+        borderRadius = '2px',
+        textTransform = 'uppercase'
+      )
+    ),
+    headerStyle = list(
+      color = txt_col,
+      fontWeight = 400,
+      fontSize = '0.75rem',
+      letterSpacing = '1px',
+      textTransform = 'uppercase',
+      '&:hover, &:focus' = list(color = txt_col)
+    ),
+    rowHighlightStyle = list(
+      '.tag' = list(color = txt_col, borderColor = txt_light_col)
+    ),
+    # Full-width search bar with search icon
+    searchInputStyle = list(
+      paddingLeft = '1.9rem',
+      paddingTop = '0.5rem',
+      paddingBottom = '0.5rem',
+      width = '100%',
+      border = 'none',
+      backgroundColor = bg_col,
+      backgroundSize = '1rem',
+      backgroundPosition = 'left 0.5rem center',
+      backgroundRepeat = 'no-repeat',
+      '&:focus' = list(backgroundColor = 'rgba(255, 255, 255, 0.1)', 
+                       border = 'none'),
+      '::placeholder' = list(color = txt_light_col),
+      '&:hover::placeholder, &:focus::placeholder' = list(color = txt_col)
+    ),
+    paginationStyle = list(color = txt_light_col),
+    pageButtonHoverStyle = list(backgroundColor = 'hsl(0, 0%, 20%)'),
+    pageButtonActiveStyle = list(backgroundColor = 'hsl(0, 0%, 24%)')
+  )
+)
   
 ```
 
-## From `r first_date` to `r last_date`
+## To `r last_date`
 
 ```{r}
 #| label: git-calendar
@@ -49,6 +138,13 @@ tile_cols <- c(faint_col, '#0e4429', '#006d32', '#26a641', '#39d353')
 
 # Choose appropriate values for breaks in bin colour
 tile_bin <- quantile(plays_by_date$hours_played, c(0, 0.25, 0.5, 0.75, 0.95))
+
+# There is a chance that the quantiles will not be distinct, in particular when
+# a large number of days have no plays. This makes sure there is a diff of 0.01
+
+for (i in seq(2, length(tile_bin))) {
+  tile_bin[i] <- pmax(tile_bin[i-1] + 0.01, tile_bin[i])
+}
 
 # Next lets construct the plot
 plays_by_date %>%
@@ -161,5 +257,239 @@ plays_by_hour %>%
 
 :::::
 
+## Top Tracks
+
+```{r}
+#| label: top-tracks-table
+
+reactable(
+  top_tracks,
+  searchable = TRUE,
+  highlight = TRUE,
+  wrap = FALSE,
+  paginationType = 'simple',
+  minRows = 10,
+  columns = list(
+    current_rank = colDef(
+      header = tagList(
+        span('#', 'aria-hidden' = 'true', title = 'Position')
+      ),
+      width = 50
+    ),
+    rank_diff = colDef(
+      header = span('Trend', class = 'sr-only'),
+      sortable = FALSE,
+      align = 'center',
+      width = 40,
+      cell = function(value) trend_indicator(value)
+    ),
+    track_name = colDef(
+      name = 'Title',
+      resizable = TRUE,
+      cell = function(value, index) {
+        tags$a(
+          href = pull(top_tracks[index, 'track_url']), 
+          target = "_blank", value
+        )
+      },
+      minWidth = 200
+    ),
+    artist_names = colDef(
+      name = 'Artist',
+      resizable = TRUE,
+      minWidth = 150
+    ),
+    first_listen = colDef(
+      name = 'First Play',
+      format = colFormat(date = TRUE, locales = 'en-AU'),
+      width = 120
+    ),
+    current_plays = colDef(
+      name = 'This Year',
+      format = colFormat(separators = TRUE),
+      defaultSortOrder = 'desc',
+      width = 90,
+      class = 'number'
+    ),
+    all_plays = colDef(
+      name = 'All Time',
+      format = colFormat(separators = TRUE),
+      defaultSortOrder = 'desc',
+      width = 90,
+      class = 'number'
+    ),
+    
+    track_popularity = colDef(show = FALSE),
+    
+    track_url = colDef(show = FALSE)
+  
+  ),
+  language = reactableLang(
+    searchPlaceholder = "Filter tracks",
+    noData = "No tracks found",
+    pageInfo = "{rowStart}\u2013{rowEnd} of {rows} tracks",
+    pagePrevious = "\u276e",
+    pageNext = "\u276f",
+  )
+)
+
+```
+
+## Top Artists
+
+```{r}
+#| label: top-artists-table
+
+reactable(
+  top_artists,
+  searchable = TRUE,
+  highlight = TRUE,
+  wrap = FALSE,
+  paginationType = 'simple',
+  minRows = 10,
+  columns = list(
+    current_rank = colDef(
+      header = tagList(
+        span('#', 'aria-hidden' = 'true', title = 'Position')
+      ),
+      width = 50
+    ),
+    rank_diff = colDef(
+      header = span('Trend', class = 'sr-only'),
+      sortable = FALSE,
+      align = 'center',
+      width = 40,
+      cell = function(value) trend_indicator(value)
+    ),
+    artist_name = colDef(
+      name = 'Artist',
+      resizable = TRUE,
+      cell = function(value, index) {
+        tags$a(
+          href = pull(top_artists[index, 'artist_url']), 
+          target = "_blank", value
+          )
+      },
+      minWidth = 200
+    ),
+    first_listen = colDef(
+      name = 'First Play',
+      format = colFormat(date = TRUE, locales = 'en-AU'),
+      width = 120
+    ),
+    current_plays = colDef(
+      name = 'This Year',
+      format = colFormat(separators = TRUE),
+      defaultSortOrder = 'desc',
+      width = 90,
+      class = 'number'
+    ),
+    all_plays = colDef(
+      name = 'All Time',
+      format = colFormat(separators = TRUE),
+      defaultSortOrder = 'desc',
+      width = 90,
+      class = 'number'
+    ),
+    followers = colDef(
+      name = 'Followers',
+      format = colFormat(separators = TRUE),
+      defaultSortOrder = 'desc',
+      width = 130,
+      class = 'number'
+    ),
+    
+    
+    artist_popularity = colDef(show = FALSE),
+    
+    artist_url = colDef(show = FALSE)
+  
+  ),
+  language = reactableLang(
+    searchPlaceholder = "Filter artists",
+    noData = "No artists found",
+    pageInfo = "{rowStart}\u2013{rowEnd} of {rows} artists",
+    pagePrevious = "\u276e",
+    pageNext = "\u276f",
+  )
+)
+
+```
 
 
+## Top Albums
+
+```{r}
+#| label: top-albums-table
+
+reactable(
+  top_albums,
+  searchable = TRUE,
+  highlight = TRUE,
+  wrap = FALSE,
+  paginationType = 'simple',
+  minRows = 10,
+  columns = list(
+    current_rank = colDef(
+      header = tagList(
+        span('#', 'aria-hidden' = 'true', title = 'Position')
+      ),
+      width = 50
+    ),
+    rank_diff = colDef(
+      header = span('Trend', class = 'sr-only'),
+      sortable = FALSE,
+      align = 'center',
+      width = 40,
+      cell = function(value) trend_indicator(value)
+    ),
+    album_name = colDef(
+      name = 'Album',
+      resizable = TRUE,
+      cell = function(value, index) {
+        tags$a(
+          href = pull(top_albums[index, 'album_url']), 
+          target = "_blank", value
+        )
+      },
+      minWidth = 200
+    ),
+    artist_names = colDef(
+      name = 'Artist',
+      resizable = TRUE,
+      minWidth = 150
+    ),
+    first_listen = colDef(
+      name = 'First Play',
+      format = colFormat(date = TRUE, locales = 'en-AU'),
+      width = 120
+    ),
+    current_plays = colDef(
+      name = 'This Year',
+      format = colFormat(separators = TRUE),
+      defaultSortOrder = 'desc',
+      width = 90,
+      class = 'number'
+    ),
+    all_plays = colDef(
+      name = 'All Time',
+      format = colFormat(separators = TRUE),
+      defaultSortOrder = 'desc',
+      width = 90,
+      class = 'number'
+    ),
+    album_popularity = colDef(show = FALSE),
+    
+    album_url = colDef(show = FALSE)
+  
+  ),
+  language = reactableLang(
+    searchPlaceholder = "Filter albums",
+    noData = "No albums found",
+    pageInfo = "{rowStart}\u2013{rowEnd} of {rows} albums",
+    pagePrevious = "\u276e",
+    pageNext = "\u276f",
+  )
+)
+
+```
