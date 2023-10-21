@@ -1,8 +1,9 @@
 library(tidyverse)
 library(jsonlite)
 library(spotifyr)
+library(keyring)
 
-# Data on track plays is held in endsong_# files, to start with we need to pull
+# Data on track plays is held in JSON files, to start with we need to pull
 # all of these into a dataframe.
 
 # Parameters ----
@@ -15,10 +16,6 @@ retain_cols <-
   c('ts', 'username', 'reason_start', 'reason_end',
     # These are transformed/renamed from the response - id and duration_ms
     'track.id', 'duration_played')
-
-# Where we expect to find the RData file from prior executions
-db_path <- 'data/spotify_play_history.RData'
-
 
 
 # Load Local Files ----
@@ -44,7 +41,9 @@ current_plays <-
   
 
 # RData file from prior executions
-if (file.exists(db_path)) load(db_path)
+if (file.exists('data/spotify_play_history.RData')) {
+  load('data/spotify_play_history.RData')
+}
 
 
 if (exists('plays')) {
@@ -94,8 +93,21 @@ call_by_chunks <- function(ids, FUN, token, n = 50, sleep = 0.1){
 }
 
 # AUTHENTICATION
-Sys.setenv(SPOTIFY_CLIENT_ID = keyring::key_get("SPOTIFY_CLIENT_ID"))
-Sys.setenv(SPOTIFY_CLIENT_SECRET = keyring::key_get("SPOTIFY_CLIENT_SECRET"))
+
+# If the keys haven't been setup, prompt for them
+check_key <- function(key_name) {
+  key_exists <- key_name %in% key_list()$service
+  
+  if(!key_exists){
+    key_set(key_name, prompt = paste0(key_name, ": "))
+  }
+  
+  return(key_get(key_name))
+}
+
+
+Sys.setenv(SPOTIFY_CLIENT_ID = check_key('SPOTIFY_CLIENT_ID'))
+Sys.setenv(SPOTIFY_CLIENT_SECRET = check_key('SPOTIFY_CLIENT_SECRET'))
 
 access_token <- get_spotify_access_token()
 
@@ -110,8 +122,9 @@ if (force_refresh) {
   message('Getting Spotify Data.')
   
   # Get all track details
-  track <- 
-    call_by_chunks(t, get_tracks, access_token) %>%
+  track_raw <- call_by_chunks(t, get_tracks, access_token)
+  
+  track <- track_raw %>%
     mutate(
       duration = dmilliseconds(duration_ms),
       album.release_date = 
@@ -128,8 +141,10 @@ if (force_refresh) {
       track_popularity = popularity
     )
   
-  track_features <- 
-    call_by_chunks(t, get_track_audio_features, access_token, 100) %>%
+  track_features_raw <- 
+    call_by_chunks(t, get_track_audio_features, access_token, 100)
+  
+  track_features <- track_features_raw %>%
     select(
       id, loudness, tempo, time_signature, key, mode, acousticness, 
       danceability, energy, speechiness, instrumentalness, liveness, valence
@@ -137,9 +152,10 @@ if (force_refresh) {
     rename(track.id = id)
   
   # Get album details
-  album <- 
-    distinct(track, album.id) %>%
-    call_by_chunks(get_albums, access_token, 20) %>%
+  album_raw <- distinct(track, album.id) %>%
+    call_by_chunks(get_albums, access_token, 20)
+    
+  album <- album_raw %>%
     select(
       id, external_ids.upc, label, name, popularity
     ) %>%
@@ -150,10 +166,12 @@ if (force_refresh) {
     )
 
   # Get all artist details
-  artist <- 
+  artist_raw <- 
     unnest_longer(track, artist.id) %>%
     distinct(artist.id) %>%
-    call_by_chunks(get_artists, access_token) %>%
+    call_by_chunks(get_artists, access_token)
+  
+  artist <- artist_raw %>%
     select(id, name, popularity, followers.total, genres) %>%
     rename(
       artist.id = id,
@@ -163,9 +181,11 @@ if (force_refresh) {
     )
   
   # For user display names
-  user <- 
+  user_raw <- 
     distinct(plays, username) %>%
-    call_by_chunks(get_user_profile, access_token, 1) %>%
+    call_by_chunks(get_user_profile, access_token, 1)
+  
+  user <- user_raw %>%
     select(id, display_name, any_of('images'))
   
 }
@@ -174,13 +194,15 @@ if (force_refresh) {
 # Save output and cleanup
 save(
   plays, track, track_features, album, artist, user, 
-  file = db_path
+  file = 'data/spotify_play_history.RData'
 )
 
-remove(
-  t, access_token, db_path, force_refresh, retain_cols, call_by_chunks, 
-  current_plays
+save(
+  track_raw, track_features_raw, album_raw, artist_raw, user_raw, 
+  file = 'data/spotify_data_raw.RData'
 )
+
+remove(ls())
 
 message('Data Loaded.')
 

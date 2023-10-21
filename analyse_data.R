@@ -1,10 +1,10 @@
 library(tidyverse)
 
-
-
-
 # This file reads the data, and potentially pulls a lot of data from Spotify
 source('get_spotify_track_data.R')
+
+
+load('data/spotify_play_history.RData')
 
 
 # Generate datasets for the user that will be loaded and referenced in the qmd
@@ -16,13 +16,34 @@ u <- '371m50txrsfipmk1senr6jcn4'
 # analysis. When counting the number of plays of a track, we will exclude any
 # that didn't get played for very long - arbitrarily 10% of the track length.
 
+# We'll also convert our categorical integers into factors.
+# Key is in pitch class notation
+pcn <- data.frame(
+  key_index = seq(0, 11),
+  key_factor = 
+    ordered(c('C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'))
+)
+
 user_plays <- 
   filter(plays, username == u) %>%
   inner_join(track, by = 'track.id') %>%
   inner_join(album, by = 'album.id', suffix = c('_track', '_album')) %>%
   left_join(track_features, by = 'track.id') %>%
-  mutate(track_played = duration_played / duration >= 0.1)
-  
+  left_join(pcn, by = c('key' = 'key_index')) %>%
+  mutate(
+    track_played = duration_played / duration >= 0.1,
+    
+    # Time signature is an estimate of the meter / 4, values range from 3-7
+    # other values will be forced to NA.
+    time_signature = 
+      factor(str_c(time_signature, "/4"), levels = str_c(seq(3, 7), "/4")),
+    
+    key = key_factor,
+    
+    # Mode: 0 = minor, 1 = major
+    mode = cut(mode, breaks = 2, labels = c('minor', 'major'))
+  ) %>%
+  select(!key_factor)
 
 last_date <- max(date(user_plays$ts))
 first_date <- last_date - years(1)
@@ -285,3 +306,49 @@ save(
   file = 'data/top_things.RData'
 )
 
+
+
+
+## Track audio features ----
+
+
+# Loudness is the average dB across the track in a typical range from -60 to 0
+# so is best used to compare relatively and the actual value is less important.
+
+
+# Tempo is BPM
+
+
+# Time signature is an estimate of the meter / 4, values range from 3-7 but this
+# is categorical.
+
+
+# Key is in pitch class notation, -1 indicates not detected.
+
+
+
+# Mode: 0 = minor, 1 = major
+
+
+
+# Acousticness is a confidence measure of whether the track is acoustic
+
+
+# Danceability is continuous from 0 (not danceable) to 1 (very danceable)
+
+
+# Energy is continuous from 0 (not energetic) to 1 (very energetic)
+
+
+# Speechiness is a confidence measure if the track is spoken word, with 3
+# categories. 0-0.33 no spoken word, 0.33-0.66 a mixture, >0.66 spoken word.
+
+
+
+# Instrumentalness is a confidence measure of whether there are vocals (0.5+)
+
+
+# Liveness is a confidence measure of whether there is an audience (0.8+)
+
+
+# Valence s continuous from 0 (negative emotion) to 1 (positive emotion)
