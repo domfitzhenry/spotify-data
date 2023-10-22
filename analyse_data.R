@@ -1,7 +1,11 @@
 library(tidyverse)
 
 # This file reads the data, and potentially pulls a lot of data from Spotify
-source('get_spotify_track_data.R')
+
+# Set this to true to call Spotify API
+force_refresh <- FALSE
+
+if (force_refresh) source('get_spotify_track_data.R')
 
 
 load('data/spotify_play_history.RData')
@@ -10,7 +14,7 @@ load('data/spotify_play_history.RData')
 # Generate datasets for the user that will be loaded and referenced in the qmd
 
 # User ----
-u <- '371m50txrsfipmk1senr6jcn4'
+u <- filter(user, display_name == 'Sammy') %>% pull(id)
 
 # This will hold a filtered and transformed plays dataset used for the remaining
 # analysis. When counting the number of plays of a track, we will exclude any
@@ -208,6 +212,7 @@ top_tracks <-
   summarise(
     all_plays = n(),
     current_plays = sum(is_current),
+    old_plays = all_plays - current_plays,
     first_listen = min(ts)
   ) %>%
   filter(all_plays >= 5) %>%
@@ -219,12 +224,9 @@ top_tracks <-
       function(a) str_flatten_comma(
         artist[artist$artist.id %in% a, 'artist_name'])
       ),
-    all_rank = n() - 
-      row_number(pick(all_plays, current_plays, track_popularity)) + 1,
-    current_rank =  n() - 
-      row_number(pick(current_plays, all_plays, track_popularity)) + 1,
-    
-    rank_diff = all_rank - current_rank,
+    old_rank = min_rank(desc(old_plays)),
+    current_rank = min_rank(desc(current_plays)),
+    rank_diff = if_else(old_plays > 0, old_rank - current_rank, NA),
     track_url = paste0('http://open.spotify.com/track/', track.id),
     ) %>%
   arrange(current_rank) %>%
@@ -243,18 +245,15 @@ top_artists <-
   summarise(
     all_plays = n(),
     current_plays = sum(is_current),
+    old_plays = all_plays - current_plays,
     first_listen = min(ts)
     ) %>%
   filter(all_plays >= 5) %>%
   inner_join(artist, by = 'artist.id') %>%
   mutate(
-    all_rank = n() - row_number(
-      pick(all_plays, current_plays, artist_popularity)
-      ) + 1,
-    current_rank =  n() - row_number(
-      pick(current_plays, all_plays, artist_popularity)
-      ) + 1,
-    rank_diff = all_rank - current_rank,
+    old_rank = min_rank(desc(old_plays)),
+    current_rank = min_rank(desc(current_plays)),
+    rank_diff = if_else(old_plays > 0, old_rank - current_rank, NA),
     artist_url = paste0('http://open.spotify.com/artist/', artist.id),
     ) %>%
   arrange(current_rank) %>%
@@ -275,28 +274,28 @@ top_albums <-
           artist[artist$artist.id %in% a, 'artist_name'])
       )
     ) %>%
-  group_by(album.id, artist_names) %>%
+  group_by(album.id, artist_names, album.release_date) %>%
   summarise(
     all_plays = n(),
     current_plays = sum(is_current),
+    old_plays = all_plays - current_plays,
     first_listen = min(ts),
     .groups = 'drop'
     ) %>%
   filter(all_plays >= 5) %>%
   inner_join(album, by = 'album.id') %>%
   mutate(
-    all_rank = n() - 
-      row_number(pick(all_plays, current_plays, album_popularity)) + 1,
-    current_rank =  n() - 
-      row_number(pick(current_plays, all_plays, album_popularity)) + 1,
-    
-    rank_diff = all_rank - current_rank,
+    old_rank = min_rank(desc(old_plays)),
+    current_rank = min_rank(desc(current_plays)),
+    rank_diff = if_else(old_plays > 0, old_rank - current_rank, NA),
     album_url = paste0('http://open.spotify.com/album/', album.id),
+    
+    release_year = year(album.release_date)
     ) %>%
   arrange(current_rank) %>%
   select(
     current_rank, rank_diff, album_name, artist_names, first_listen, 
-    current_plays, all_plays, album_popularity, album_url
+    current_plays, all_plays, album_popularity, release_year, album_url
   )
 
 
@@ -305,7 +304,6 @@ save(
   top_tracks, top_artists, top_albums,
   file = 'data/top_things.RData'
 )
-
 
 
 
@@ -352,3 +350,23 @@ save(
 
 
 # Valence s continuous from 0 (negative emotion) to 1 (positive emotion)
+
+
+
+
+# Artist popularity vs user popularity
+top_artists %>%
+  mutate(
+    user_popularity = percent_rank(all_plays) * 100
+  ) %>%
+  ggplot(aes(x = user_popularity, y = artist_popularity)) +
+  geom_point()
+
+
+# Top albums by release year
+top_albums %>%
+  ggplot(aes(x = release_year)) +
+  geom_bar()
+
+
+

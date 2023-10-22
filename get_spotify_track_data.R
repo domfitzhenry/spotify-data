@@ -6,11 +6,6 @@ library(keyring)
 # Data on track plays is held in JSON files, to start with we need to pull
 # all of these into a dataframe.
 
-# Parameters ----
-
-# Set this to true to call Spotify API
-force_refresh <- FALSE
-
 # The list of columns that are retained from the JSON files
 retain_cols <- 
   c('ts', 'username', 'reason_start', 'reason_end',
@@ -117,78 +112,76 @@ access_token <- get_spotify_access_token()
 
 t <- distinct(plays, track.id)
 
-if (force_refresh) {
-  
-  message('Getting Spotify Data.')
-  
-  # Get all track details
-  track_raw <- call_by_chunks(t, get_tracks, access_token)
-  
-  track <- track_raw %>%
-    mutate(
-      duration = dmilliseconds(duration_ms),
-      album.release_date = 
-        parse_date_time(album.release_date, c('y', 'ym', 'ymd'))
-    ) %>%
-    hoist(artists, artist.id = 'id') %>%
-    select(
-      id, external_ids.isrc, name, album.release_date, album.id, duration, 
-      popularity, explicit, artist.id
-    ) %>%
-    rename(
-      track.id = id,
-      track_name = name,
-      track_popularity = popularity
-    )
-  
-  track_features_raw <- 
-    call_by_chunks(t, get_track_audio_features, access_token, 100)
-  
-  track_features <- track_features_raw %>%
-    select(
-      id, loudness, tempo, time_signature, key, mode, acousticness, 
-      danceability, energy, speechiness, instrumentalness, liveness, valence
-    ) %>%
-    rename(track.id = id)
-  
-  # Get album details
-  album_raw <- distinct(track, album.id) %>%
-    call_by_chunks(get_albums, access_token, 20)
-    
-  album <- album_raw %>%
-    select(
-      id, external_ids.upc, label, name, popularity
-    ) %>%
-    rename(
-      album.id = id,
-      album_name = name,
-      album_popularity = popularity
-    )
 
-  # Get all artist details
-  artist_raw <- 
-    unnest_longer(track, artist.id) %>%
-    distinct(artist.id) %>%
-    call_by_chunks(get_artists, access_token)
   
-  artist <- artist_raw %>%
-    select(id, name, popularity, followers.total, genres) %>%
-    rename(
-      artist.id = id,
-      artist_name = name,
-      artist_popularity = popularity,
-      followers = followers.total
-    )
+message('Getting Spotify Data.')
+
+# Get all track details
+track_raw <- call_by_chunks(t, get_tracks, access_token)
+
+track <- track_raw %>%
+  mutate(
+    duration = dmilliseconds(duration_ms),
+    album.release_date = 
+      parse_date_time(album.release_date, c('y', 'ym', 'ymd'))
+  ) %>%
+  hoist(artists, artist.id = 'id') %>%
+  select(
+    id, external_ids.isrc, name, album.release_date, album.id, duration, 
+    popularity, explicit, artist.id
+  ) %>%
+  rename(
+    track.id = id,
+    track_name = name,
+    track_popularity = popularity
+  )
+
+track_features_raw <- 
+  call_by_chunks(t, get_track_audio_features, access_token, 100)
+
+track_features <- track_features_raw %>%
+  select(
+    id, loudness, tempo, time_signature, key, mode, acousticness, 
+    danceability, energy, speechiness, instrumentalness, liveness, valence
+  ) %>%
+  rename(track.id = id)
+
+# Get album details
+album_raw <- distinct(track, album.id) %>%
+  call_by_chunks(get_albums, access_token, 20)
   
-  # For user display names
-  user_raw <- 
-    distinct(plays, username) %>%
-    call_by_chunks(get_user_profile, access_token, 1)
-  
-  user <- user_raw %>%
-    select(id, display_name, any_of('images'))
-  
-}
+album <- album_raw %>%
+  select(
+    id, external_ids.upc, label, name, popularity
+  ) %>%
+  rename(
+    album.id = id,
+    album_name = name,
+    album_popularity = popularity
+  )
+
+# Get all artist details
+artist_raw <- 
+  unnest_longer(track, artist.id) %>%
+  distinct(artist.id) %>%
+  call_by_chunks(get_artists, access_token)
+
+artist <- artist_raw %>%
+  select(id, name, popularity, followers.total, genres) %>%
+  rename(
+    artist.id = id,
+    artist_name = name,
+    artist_popularity = popularity,
+    followers = followers.total
+  )
+
+# For user display names
+user_raw <- 
+  distinct(plays, username) %>%
+  call_by_chunks(get_user_profile, access_token, 1)
+
+user <- user_raw %>%
+  select(id, display_name, any_of('images'))
 
 
 # Save output and cleanup
@@ -202,7 +195,7 @@ save(
   file = 'data/spotify_data_raw.RData'
 )
 
-remove(ls())
+remove(list = ls())
 
 message('Data Loaded.')
 

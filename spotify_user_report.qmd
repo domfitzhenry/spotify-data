@@ -2,6 +2,7 @@
 title: "Spotify Data"
 format:
   html: 
+    embed-resources: true
     theme: cyborg
     fig-cap-location: top
     page-layout: full
@@ -42,13 +43,17 @@ spotify_green <- '#1DB954'
 trend_indicator <- function(value = 0) {
   args <- list(role = 'img', title = value)
   
-  if (value == 0) {
+  if (is.na(value)) {
+    args <- c(args, list(shiny::icon("circle"), 
+                         style = "color: #2e77d0; font-size: 0.6rem"))
+  } else if (value == 0) {
     args <- c(args, list("–", style = "color: #666; font-weight: 700"))
   } else if (value > 0) {
     args <- c(args, list(shiny::icon("caret-up"), style = "color: #1ed760"))
   } else if (value < 0) {
     args <- c(args, list(shiny::icon("caret-down"), style = "color: #cd1a2b"))
   }
+  
   do.call(span, args)
 }
 
@@ -478,8 +483,9 @@ reactable(
       width = 90,
       class = 'number'
     ),
-    album_popularity = colDef(show = FALSE),
     
+    album_popularity = colDef(show = FALSE),
+    release_year = colDef(show = FALSE),
     album_url = colDef(show = FALSE)
   
   ),
@@ -493,3 +499,9 @@ reactable(
 )
 
 ```
+
+
+
+
+
+
