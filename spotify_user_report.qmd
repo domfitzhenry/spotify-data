@@ -228,7 +228,7 @@ plays_by_date %>%
 #| fig-align: right
 #| fig-width: 3
 #| fig-height: 3
-#| fig-cap: "Activity by time of day proportional to the most active hour"
+#| fig-cap: "Activity by time of day"
 #| fig-format: svg
 #| dev.args: !expr 'list(bg = bg_col)'
 
@@ -340,6 +340,92 @@ reactable(
 
 ```
 
+## Top Albums
+
+```{r}
+#| label: top-albums-table
+
+reactable(
+  top_albums,
+  searchable = TRUE,
+  highlight = TRUE,
+  wrap = FALSE,
+  paginationType = 'simple',
+  minRows = 10,
+  columns = list(
+    current_rank = colDef(
+      header = tagList(
+        span('#', 'aria-hidden' = 'true', title = 'Position')
+      ),
+      width = 50
+    ),
+    rank_diff = colDef(
+      header = span('Trend', class = 'sr-only'),
+      sortable = FALSE,
+      align = 'center',
+      width = 40,
+      cell = function(value) trend_indicator(value)
+    ),
+    album_name = colDef(
+      name = 'Album',
+      resizable = TRUE,
+      cell = function(value, index) {
+        tags$a(
+          href = pull(top_albums[index, 'album_url']), 
+          target = "_blank", value
+        )
+      },
+      minWidth = 200
+    ),
+    artist_names = colDef(
+      name = 'Artist',
+      resizable = TRUE,
+      minWidth = 150
+    ),
+    distinct_tracks = colDef(
+      name = 'Tracks',
+      format = colFormat(separators = TRUE),
+      defaultSortOrder = 'desc',
+      width = 90,
+      class = 'number'
+    ),
+    first_listen = colDef(
+      name = 'First Play',
+      format = colFormat(date = TRUE, locales = 'en-AU'),
+      width = 120
+    ),
+    current_plays = colDef(
+      name = 'This Year',
+      format = colFormat(separators = TRUE),
+      defaultSortOrder = 'desc',
+      width = 90,
+      class = 'number'
+    ),
+    all_plays = colDef(
+      name = 'All Time',
+      format = colFormat(separators = TRUE),
+      defaultSortOrder = 'desc',
+      width = 90,
+      class = 'number'
+    ),
+    
+    album_popularity = colDef(show = FALSE),
+    release_year = colDef(show = FALSE),
+    album_url = colDef(show = FALSE)
+  
+  ),
+  language = reactableLang(
+    searchPlaceholder = "Filter albums",
+    noData = "No albums found",
+    pageInfo = "{rowStart}\u2013{rowEnd} of {rows} albums",
+    pagePrevious = "\u276e",
+    pageNext = "\u276f",
+  )
+)
+
+```
+
+
 ## Top Artists
 
 ```{r}
@@ -376,6 +462,13 @@ reactable(
           )
       },
       minWidth = 200
+    ),
+    distinct_tracks = colDef(
+      name = 'Tracks',
+      format = colFormat(separators = TRUE),
+      defaultSortOrder = 'desc',
+      width = 90,
+      class = 'number'
     ),
     first_listen = colDef(
       name = 'First Play',
@@ -422,13 +515,13 @@ reactable(
 ```
 
 
-## Top Albums
+## Top Genres
 
 ```{r}
-#| label: top-albums-table
+#| label: top-genres-table
 
 reactable(
-  top_albums,
+  top_genres,
   searchable = TRUE,
   highlight = TRUE,
   wrap = FALSE,
@@ -448,21 +541,17 @@ reactable(
       width = 40,
       cell = function(value) trend_indicator(value)
     ),
-    album_name = colDef(
-      name = 'Album',
+    genres = colDef(
+      name = 'Genre',
       resizable = TRUE,
-      cell = function(value, index) {
-        tags$a(
-          href = pull(top_albums[index, 'album_url']), 
-          target = "_blank", value
-        )
-      },
       minWidth = 200
     ),
-    artist_names = colDef(
-      name = 'Artist',
-      resizable = TRUE,
-      minWidth = 150
+    distinct_tracks = colDef(
+      name = 'Tracks',
+      format = colFormat(separators = TRUE),
+      defaultSortOrder = 'desc',
+      width = 90,
+      class = 'number'
     ),
     first_listen = colDef(
       name = 'First Play',
@@ -482,26 +571,17 @@ reactable(
       defaultSortOrder = 'desc',
       width = 90,
       class = 'number'
-    ),
-    
-    album_popularity = colDef(show = FALSE),
-    release_year = colDef(show = FALSE),
-    album_url = colDef(show = FALSE)
-  
+    )
   ),
   language = reactableLang(
-    searchPlaceholder = "Filter albums",
-    noData = "No albums found",
-    pageInfo = "{rowStart}\u2013{rowEnd} of {rows} albums",
+    searchPlaceholder = "Filter genres",
+    noData = "No genres found",
+    pageInfo = "{rowStart}\u2013{rowEnd} of {rows} genres",
     pagePrevious = "\u276e",
     pageNext = "\u276f",
   )
 )
 
 ```
-
-
-
-
 
 

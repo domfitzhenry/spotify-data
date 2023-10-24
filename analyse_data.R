@@ -240,13 +240,16 @@ top_tracks <-
 ### Artists
 top_artists <- 
   filter(user_plays, track_played) %>%
-  unnest_longer(artist.id) %>%
+  # We'll credit the song only to the first listed artist, as it might cause
+  # obscure collaborations to appear high in the list.
+  mutate(artist.id = map_chr(artist.id, 1)) %>%
   group_by(artist.id) %>%
   summarise(
     all_plays = n(),
     current_plays = sum(is_current),
     old_plays = all_plays - current_plays,
-    first_listen = min(ts)
+    first_listen = min(ts),
+    distinct_tracks = n_distinct(track.id)
     ) %>%
   filter(all_plays >= 5) %>%
   inner_join(artist, by = 'artist.id') %>%
@@ -258,7 +261,7 @@ top_artists <-
     ) %>%
   arrange(current_rank) %>%
   select(
-    rank_diff, current_rank, artist_name, first_listen, 
+    rank_diff, current_rank, artist_name, distinct_tracks, first_listen, 
     current_plays, all_plays, followers, artist_popularity, artist_url
   )
 
@@ -280,6 +283,7 @@ top_albums <-
     current_plays = sum(is_current),
     old_plays = all_plays - current_plays,
     first_listen = min(ts),
+    distinct_tracks = n_distinct(track.id),
     .groups = 'drop'
     ) %>%
   filter(all_plays >= 5) %>%
@@ -289,21 +293,79 @@ top_albums <-
     current_rank = min_rank(desc(current_plays)),
     rank_diff = if_else(old_plays > 0, old_rank - current_rank, NA),
     album_url = paste0('http://open.spotify.com/album/', album.id),
-    
     release_year = year(album.release_date)
     ) %>%
   arrange(current_rank) %>%
   select(
-    current_rank, rank_diff, album_name, artist_names, first_listen, 
-    current_plays, all_plays, album_popularity, release_year, album_url
+    current_rank, rank_diff, album_name, artist_names, distinct_tracks, 
+    first_listen, current_plays, all_plays, album_popularity, release_year, 
+    album_url
   )
 
 
 
+
+
+
+
+## Genres ----
+
+# Genres are associated with an artist, so taking a similar approach to the top
+# artist list.
+
+top_genres <- 
+  filter(user_plays, track_played) %>%
+  mutate(artist.id = map_chr(artist.id, 1)) %>%
+  inner_join(artist, by = 'artist.id') %>%
+  select(ts, track.id, genres, is_current) %>%
+  unnest_longer(genres) %>%
+  group_by(genres) %>%
+  summarise(
+    all_plays = n(),
+    current_plays = sum(is_current),
+    old_plays = all_plays - current_plays,
+    first_listen = min(ts),
+    distinct_tracks = n_distinct(track.id),
+    .groups = 'drop'
+  ) %>%
+  filter(all_plays >= 5) %>%
+  mutate(
+    old_rank = min_rank(desc(old_plays)),
+    current_rank = min_rank(desc(current_plays)),
+    rank_diff = if_else(old_plays > 0, old_rank - current_rank, NA)
+  ) %>%
+  arrange(current_rank) %>%
+  select(
+    current_rank, rank_diff, genres, distinct_tracks, first_listen, 
+    current_plays, all_plays
+  )
+
+
+
+
 save(
-  top_tracks, top_artists, top_albums,
+  top_tracks, top_artists, top_albums, top_genres,
   file = 'data/top_things.RData'
 )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -367,6 +429,3 @@ top_artists %>%
 top_albums %>%
   ggplot(aes(x = release_year)) +
   geom_bar()
-
-
-
