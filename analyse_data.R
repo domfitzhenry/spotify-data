@@ -206,10 +206,18 @@ save(
 ## Ordered Tables ----
 
 ### Tracks
+
+# The same track might appear on multiple albums, in which case it will have
+# different spotify track ids - the ISRC is the unique identifier for a track.
+
+# For the purposes of top tracks, it doesn't really matter which track.id is
+# linked, it is more important for the track to be unique in the list.
+
 top_tracks <-
-  filter(user_plays, track_played) %>%
-  group_by(track.id) %>%
+  filter(user_plays, track_played, !is.na(external_ids.isrc)) %>%
+  group_by(external_ids.isrc) %>%
   summarise(
+    track.id = first(track.id),
     all_plays = n(),
     current_plays = sum(is_current),
     old_plays = all_plays - current_plays,
@@ -236,7 +244,6 @@ top_tracks <-
   )
 
 
-
 ### Artists
 top_artists <- 
   filter(user_plays, track_played) %>%
@@ -261,8 +268,8 @@ top_artists <-
     ) %>%
   arrange(current_rank) %>%
   select(
-    rank_diff, current_rank, artist_name, distinct_tracks, first_listen, 
-    current_plays, all_plays, followers, artist_popularity, artist_url
+    rank_diff, current_rank, artist_name, first_listen, distinct_tracks, 
+    current_plays, all_plays, artist_popularity, artist_url
   )
 
 
@@ -297,8 +304,8 @@ top_albums <-
     ) %>%
   arrange(current_rank) %>%
   select(
-    current_rank, rank_diff, album_name, artist_names, distinct_tracks, 
-    first_listen, current_plays, all_plays, album_popularity, release_year, 
+    current_rank, rank_diff, album_name, artist_names, first_listen, 
+    distinct_tracks, current_plays, all_plays, album_popularity, release_year, 
     album_url
   )
 
@@ -336,7 +343,7 @@ top_genres <-
   ) %>%
   arrange(current_rank) %>%
   select(
-    current_rank, rank_diff, genres, distinct_tracks, first_listen, 
+    current_rank, rank_diff, genres, first_listen, distinct_tracks, 
     current_plays, all_plays
   )
 
@@ -413,19 +420,3 @@ save(
 
 # Valence s continuous from 0 (negative emotion) to 1 (positive emotion)
 
-
-
-
-# Artist popularity vs user popularity
-top_artists %>%
-  mutate(
-    user_popularity = percent_rank(all_plays) * 100
-  ) %>%
-  ggplot(aes(x = user_popularity, y = artist_popularity)) +
-  geom_point()
-
-
-# Top albums by release year
-top_albums %>%
-  ggplot(aes(x = release_year)) +
-  geom_bar()

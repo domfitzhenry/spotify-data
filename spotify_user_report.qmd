@@ -310,10 +310,10 @@ reactable(
       width = 120
     ),
     current_plays = colDef(
-      name = 'This Year',
+      name = 'Last Year',
       format = colFormat(separators = TRUE),
       defaultSortOrder = 'desc',
-      width = 90,
+      width = 100,
       class = 'number'
     ),
     all_plays = colDef(
@@ -395,10 +395,10 @@ reactable(
       width = 120
     ),
     current_plays = colDef(
-      name = 'This Year',
+      name = 'Last Year',
       format = colFormat(separators = TRUE),
       defaultSortOrder = 'desc',
-      width = 90,
+      width = 100,
       class = 'number'
     ),
     all_plays = colDef(
@@ -425,6 +425,58 @@ reactable(
 
 ```
 
+
+
+``` {r}
+#| label: album-release-bars
+#| fig-width: 13.5
+#| fig-height: 5
+#| fig-cap: "Albums by release year"
+#| fig-format: svg
+
+top_albums %>%
+  group_by(release_year) %>%
+  summarise(
+    n_albums = n(),
+    total_plays = sum(all_plays)
+  ) %>%
+  ggplot(
+    aes(x = release_year, y = n_albums, 
+        group = release_year, fill = total_plays)
+    ) +
+  geom_col() +
+  scale_fill_gradient(
+    low = faint_col, high = spotify_green, name = 'Plays',
+    n.breaks = 5
+    ) +
+  guides(fill = guide_colorbar(
+    ticks.colour = bg_col, frame.colour = bg_col)
+    ) +
+  scale_y_continuous(expand = expansion(mult = c(0.01, 0.05))) +
+  labs(x = 'Release Year', y = 'Albums') +
+  theme(
+    rect = element_rect(colour = bg_col, fill = bg_col),
+    text = element_text(colour = txt_light_col),
+    
+    axis.line.x = element_line(linetype = 'solid'),
+    axis.text.x = element_text(colour = txt_col),
+    axis.ticks = element_blank(),
+    
+    legend.position = c(0.05, 0.8),
+    legend.title.align = 0,
+    legend.title = element_text(size = 8),
+    
+    plot.background = element_rect(colour = bg_col, fill = bg_col),
+    
+    panel.background = element_rect(colour = bg_col, fill = bg_col),
+    panel.border = element_blank(),
+    panel.grid.major.x  = element_line(colour = faint_col),
+    panel.grid.major.y = element_line(colour = faint_col, linetype = 'dotted'),
+    panel.grid.minor = element_blank()
+  )
+
+
+```
 
 ## Top Artists
 
@@ -463,6 +515,11 @@ reactable(
       },
       minWidth = 200
     ),
+    first_listen = colDef(
+      name = 'First Play',
+      format = colFormat(date = TRUE, locales = 'en-AU'),
+      width = 120
+    ),
     distinct_tracks = colDef(
       name = 'Tracks',
       format = colFormat(separators = TRUE),
@@ -470,16 +527,11 @@ reactable(
       width = 90,
       class = 'number'
     ),
-    first_listen = colDef(
-      name = 'First Play',
-      format = colFormat(date = TRUE, locales = 'en-AU'),
-      width = 120
-    ),
     current_plays = colDef(
-      name = 'This Year',
+      name = 'Last Year',
       format = colFormat(separators = TRUE),
       defaultSortOrder = 'desc',
-      width = 90,
+      width = 100,
       class = 'number'
     ),
     all_plays = colDef(
@@ -489,14 +541,6 @@ reactable(
       width = 90,
       class = 'number'
     ),
-    followers = colDef(
-      name = 'Followers',
-      format = colFormat(separators = TRUE),
-      defaultSortOrder = 'desc',
-      width = 130,
-      class = 'number'
-    ),
-    
     
     artist_popularity = colDef(show = FALSE),
     
@@ -546,6 +590,11 @@ reactable(
       resizable = TRUE,
       minWidth = 200
     ),
+    first_listen = colDef(
+      name = 'First Play',
+      format = colFormat(date = TRUE, locales = 'en-AU'),
+      width = 120
+    ),
     distinct_tracks = colDef(
       name = 'Tracks',
       format = colFormat(separators = TRUE),
@@ -553,16 +602,11 @@ reactable(
       width = 90,
       class = 'number'
     ),
-    first_listen = colDef(
-      name = 'First Play',
-      format = colFormat(date = TRUE, locales = 'en-AU'),
-      width = 120
-    ),
     current_plays = colDef(
-      name = 'This Year',
+      name = 'Last Year',
       format = colFormat(separators = TRUE),
       defaultSortOrder = 'desc',
-      width = 90,
+      width = 100,
       class = 'number'
     ),
     all_plays = colDef(
