@@ -14,7 +14,7 @@ load('data/spotify_play_history.RData')
 # Generate datasets for the user that will be loaded and referenced in the qmd
 
 # User ----
-u <- filter(user, display_name == 'Sammy') %>% pull(id)
+u <- filter(user, display_name == 'domotron') %>% pull(id)
 
 # This will hold a filtered and transformed plays dataset used for the remaining
 # analysis. When counting the number of plays of a track, we will exclude any

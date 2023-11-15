@@ -275,6 +275,8 @@ reactable(
   paginationType = 'simple',
   minRows = 10,
   columns = list(
+    track.id = colDef(show = FALSE),
+    
     current_rank = colDef(
       header = tagList(
         span('#', 'aria-hidden' = 'true', title = 'Position')
@@ -353,6 +355,8 @@ reactable(
   paginationType = 'simple',
   minRows = 10,
   columns = list(
+    album.id = colDef(show = FALSE),
+    
     current_rank = colDef(
       header = tagList(
         span('#', 'aria-hidden' = 'true', title = 'Position')
@@ -491,6 +495,7 @@ reactable(
   paginationType = 'simple',
   minRows = 10,
   columns = list(
+    artist.id = colDef(show = FALSE),
     current_rank = colDef(
       header = tagList(
         span('#', 'aria-hidden' = 'true', title = 'Position')
@@ -543,7 +548,7 @@ reactable(
     ),
     
     artist_popularity = colDef(show = FALSE),
-    
+    followers = colDef(show = FALSE),
     artist_url = colDef(show = FALSE)
   
   ),
