@@ -239,7 +239,7 @@ top_tracks <-
     ) %>%
   arrange(current_rank) %>%
   select(
-    rank_diff, current_rank, track_name, artist_names, first_listen, 
+    track.id, current_rank, rank_diff, track_name, artist_names, first_listen, 
     current_plays, all_plays, track_popularity, track_url
   )
 
@@ -268,8 +268,9 @@ top_artists <-
     ) %>%
   arrange(current_rank) %>%
   select(
-    rank_diff, current_rank, artist_name, first_listen, distinct_tracks, 
-    current_plays, all_plays, artist_popularity, artist_url
+    artist.id, current_rank, rank_diff, artist_name, first_listen, 
+    distinct_tracks, current_plays, all_plays, artist_popularity, followers, 
+    artist_url
   )
 
 
@@ -304,7 +305,7 @@ top_albums <-
     ) %>%
   arrange(current_rank) %>%
   select(
-    current_rank, rank_diff, album_name, artist_names, first_listen, 
+    album.id, current_rank, rank_diff, album_name, artist_names, first_listen, 
     distinct_tracks, current_plays, all_plays, album_popularity, release_year, 
     album_url
   )
@@ -317,25 +318,27 @@ top_albums <-
 
 ## Genres ----
 
-# Genres are associated with an artist, so taking a similar approach to the top
-# artist list.
+# Genres are associated with an artist, rather than a song or an album, so start
+# with the top artist list and aggregate the existing summary numbers. 
 
 top_genres <- 
-  filter(user_plays, track_played) %>%
-  mutate(artist.id = map_chr(artist.id, 1)) %>%
+  top_artists %>%
+  select(artist.id, first_listen, distinct_tracks, current_plays, all_plays) %>%
   inner_join(artist, by = 'artist.id') %>%
-  select(ts, track.id, genres, is_current) %>%
+  select(artist_name, genres, first_listen:all_plays) %>%
   unnest_longer(genres) %>%
   group_by(genres) %>%
   summarise(
-    all_plays = n(),
-    current_plays = sum(is_current),
+    all_plays = sum(all_plays),
+    current_plays = sum(current_plays),
     old_plays = all_plays - current_plays,
-    first_listen = min(ts),
-    distinct_tracks = n_distinct(track.id),
+    first_listen = min(first_listen),
+    distinct_tracks = sum(distinct_tracks),
     .groups = 'drop'
   ) %>%
-  filter(all_plays >= 5) %>%
+  # This genre filter is because I disagree with the associations in my personal 
+  # listening history, and I have the power to make it disappear.
+  filter(all_plays >= 5, genres != 'nu metal') %>%
   mutate(
     old_rank = min_rank(desc(old_plays)),
     current_rank = min_rank(desc(current_plays)),
@@ -350,12 +353,164 @@ top_genres <-
 
 
 
+
+# Now to attempt something fancy with genres
+# Ideas include a network graph given artists are associated with many genres
+# or some kind of hierarchy based on genre-subgenre.
+
+# Try the hierarchy first
+
+# Assume that a broader genre will be a shorter string contained within a broad
+# genre - e.g. rock -> alternative rock -> soft alternative rock. 
+
+# Find the number of words in a genre, start with single words, and then search
+# for broader genres. Treat anything non-alpha as a break.
+
+
+genre_breaks <- top_genres %>%
+  select(genres, all_plays) %>%
+  mutate(n_breaks = str_count(genres, '[^[:alpha:]]')) %>%
+  arrange(n_breaks, all_plays)
+
+
+
+
+# For each genre that has n breaks, match it with all genres containing it as a
+# substring that have n + 1 breaks. The problem with this approach is there 
+# might be narrow genres that map to more than one broad genre - e.g. should 
+# "funk rock" map to "funk" or "rock"?
+
+# To avoid this, only match at the end of the narrow genre. This is good as it
+# removes partial word matches which we don't want in most cases, and we assume
+# earlier words are more like an adjective.
+
+genre_map <- genre_breaks %>%
+  mutate(next_break = n_breaks + 1L) %>%
+  inner_join(
+    genre_breaks, by = c("next_break" = "n_breaks"), 
+    suffix = c('_broad', '_narrow'), relationship = "many-to-many"
+  ) %>%
+  filter(str_ends(genres_narrow, fixed(genres_broad)))
+
+# And there might be some narrow genres that don't map back to a genre 
+# containing n-1 breaks - what are they and do we care?
+
+genre_map %>%
+  filter(n_breaks > 0, !genres_broad %in% genre_map$genres_narrow)
+
+
+# Both cases look okay.
+
+
+# Now lets commit the cardinal sin of modifying the data to fit our assumptions.
+# Set the number of plays in the broad narrow genre to the sum of its children
+# if that is higher, which feels okay as this is more about proportions rather 
+# than exact numbers. This needs to be done iteratively from the bottom up.
+
+for(i in seq(max(genre_map$n_breaks), 0, -1)) {
+  genre_map <- genre_map %>%
+    group_by(genres_broad) %>%
+    mutate(
+      all_plays_broad = if_else(
+        n_breaks == i, 
+        pmax(all_plays_broad, sum(all_plays_narrow)), 
+        all_plays_broad
+      )
+    )
+}
+
+
+# Now add a root node with our top level genres
+
+genre_map <- genre_map %>%
+  ungroup() %>%
+  filter(n_breaks == 0) %>%
+  distinct(genres_broad, all_plays_broad) %>%
+  rename(
+    genres_narrow = genres_broad,
+    all_plays_narrow = all_plays_broad
+  ) %>%
+  mutate(
+    genres_broad = 'genre',
+    all_plays_broad = sum(all_plays_narrow),
+    n_breaks = -1L,
+    next_break = 0L,
+    .before = genres_narrow
+  ) %>%
+  rbind(genre_map)
+
+
+
+# Now reduce the dataset so we can distinguish things in the viz, we'll limit
+# to at most 5 subgenres at each level. More looping :(
+
+# Set a root level node
+reduced_genre_map <- genre_map %>%
+  filter(genres_broad == 'genre') %>%
+  distinct(next_break, genres_broad, all_plays_broad) %>%
+  mutate(
+    level = next_break,
+    genre = genres_broad,
+    parent = '',
+    value = 0,
+    .keep = 'none'
+  )
+
+
+for(i in seq(-1L, max(genre_map$n_breaks), 1)) {
+
+  reduced_genre_map <- genre_map %>%
+    filter(n_breaks == i, genres_broad %in% reduced_genre_map$genre) %>%
+    group_by(genres_broad) %>%
+    slice_max(order_by = all_plays_narrow, n = 5) %>%
+    ungroup() %>%
+    mutate(
+      level = next_break,
+      genre = genres_narrow,
+      parent = genres_broad,
+      value = all_plays_narrow,
+      .keep = 'none'
+    ) %>%
+    rbind(reduced_genre_map)
+}
+
+
+library(plotly)
+
+
+plot_ly(
+  reduced_genre_map,
+  ids = ~genre,
+  labels = ~genre,
+  parents = ~parent,
+  values = ~value,
+  type = 'sunburst'
+)
+
+
+
+
 save(
   top_tracks, top_artists, top_albums, top_genres,
   file = 'data/top_things.RData'
 )
 
 
+
+
+
+
+
+
+# Colours ----
+# Temporarily adding here while playing with plots
+bg_col <- '#060606'
+faint_col <- '#161b22'
+
+txt_col <- '#e6edf3'
+txt_light_col <- '#adafae'
+
+spotify_green <- '#1DB954'
 
 
 
@@ -381,9 +536,16 @@ save(
 
 # Loudness is the average dB across the track in a typical range from -60 to 0
 # so is best used to compare relatively and the actual value is less important.
-
-
-# Tempo is BPM
+# user_plays %>%
+#   distinct(track.id, loudness) %>%
+#   ggplot(aes(x = loudness)) +
+#   geom_density()
+# 
+# # Tempo is BPM
+# user_plays %>%
+#   distinct(track.id, tempo) %>%
+#   ggplot(aes(x = tempo)) +
+#   geom_density()
 
 
 # Time signature is an estimate of the meter / 4, values range from 3-7 but this
