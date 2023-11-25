@@ -14,7 +14,7 @@ load('data/spotify_play_history.RData')
 # Generate datasets for the user that will be loaded and referenced in the qmd
 
 # User ----
-u <- filter(user, display_name == 'domotron') %>% pull(id)
+u <- filter(user, display_name == 'Sammy') %>% pull(id)
 
 # This will hold a filtered and transformed plays dataset used for the remaining
 # analysis. When counting the number of plays of a track, we will exclude any
@@ -333,7 +333,7 @@ top_genres <-
     current_plays = sum(current_plays),
     old_plays = all_plays - current_plays,
     first_listen = min(first_listen),
-    distinct_tracks = sum(distinct_tracks),
+    distinct_artists = n_distinct(artist_name),
     .groups = 'drop'
   ) %>%
   # This genre filter is because I disagree with the associations in my personal 
@@ -346,7 +346,7 @@ top_genres <-
   ) %>%
   arrange(current_rank) %>%
   select(
-    current_rank, rank_diff, genres, first_listen, distinct_tracks, 
+    current_rank, rank_diff, genres, first_listen, distinct_artists, 
     current_plays, all_plays
   )
 
@@ -354,11 +354,7 @@ top_genres <-
 
 
 
-# Now to attempt something fancy with genres
-# Ideas include a network graph given artists are associated with many genres
-# or some kind of hierarchy based on genre-subgenre.
-
-# Try the hierarchy first
+### Genre Hierarchy ----
 
 # Assume that a broader genre will be a shorter string contained within a broad
 # genre - e.g. rock -> alternative rock -> soft alternative rock. 
@@ -368,11 +364,9 @@ top_genres <-
 
 
 genre_breaks <- top_genres %>%
-  select(genres, all_plays) %>%
+  select(genres, distinct_artists) %>%
   mutate(n_breaks = str_count(genres, '[^[:alpha:]]')) %>%
-  arrange(n_breaks, all_plays)
-
-
+  arrange(n_breaks, distinct_artists)
 
 
 # For each genre that has n breaks, match it with all genres containing it as a
@@ -384,6 +378,8 @@ genre_breaks <- top_genres %>%
 # removes partial word matches which we don't want in most cases, and we assume
 # earlier words are more like an adjective.
 
+# Also note we are losing any genres with no parents or descendants in this step
+
 genre_map <- genre_breaks %>%
   mutate(next_break = n_breaks + 1L) %>%
   inner_join(
@@ -392,108 +388,66 @@ genre_map <- genre_breaks %>%
   ) %>%
   filter(str_ends(genres_narrow, fixed(genres_broad)))
 
+
+
 # And there might be some narrow genres that don't map back to a genre 
-# containing n-1 breaks - what are they and do we care?
+# containing n-1 breaks - e.g. "hip hop" doesn't have a corresponding "hop"
+# It seems reasonable to bring these up to the top level.
 
-genre_map %>%
-  filter(n_breaks > 0, !genres_broad %in% genre_map$genres_narrow)
-
-
-# Both cases look okay.
-
-
-# Now lets commit the cardinal sin of modifying the data to fit our assumptions.
-# Set the number of plays in the broad narrow genre to the sum of its children
-# if that is higher, which feels okay as this is more about proportions rather 
-# than exact numbers. This needs to be done iteratively from the bottom up.
-
-for(i in seq(max(genre_map$n_breaks), 0, -1)) {
-  genre_map <- genre_map %>%
-    group_by(genres_broad) %>%
-    mutate(
-      all_plays_broad = if_else(
-        n_breaks == i, 
-        pmax(all_plays_broad, sum(all_plays_narrow)), 
-        all_plays_broad
-      )
+genre_map <- genre_map %>%
+  mutate(
+    n_breaks = if_else(
+      genres_broad %in% genre_map$genres_narrow,
+      n_breaks,
+      0
     )
-}
+  )
 
 
-# Now add a root node with our top level genres
+
+# Now add narrow genres for our top level genres that will link to a root node.
+# At this point we can also reduce the dataset to the values we will use in the
+# visualisation, and finally add that root node.
 
 genre_map <- genre_map %>%
   ungroup() %>%
   filter(n_breaks == 0) %>%
-  distinct(genres_broad, all_plays_broad) %>%
+  distinct(genres_broad, distinct_artists_broad) %>%
   rename(
     genres_narrow = genres_broad,
-    all_plays_narrow = all_plays_broad
+    distinct_artists_narrow = distinct_artists_broad
   ) %>%
   mutate(
-    genres_broad = 'genre',
-    all_plays_broad = sum(all_plays_narrow),
+    genres_broad = 'genres',
+    distinct_artists_broad = sum(distinct_artists_narrow),
     n_breaks = -1L,
     next_break = 0L,
     .before = genres_narrow
   ) %>%
-  rbind(genre_map)
-
-
-
-# Now reduce the dataset so we can distinguish things in the viz, we'll limit
-# to at most 5 subgenres at each level. More looping :(
-
-# Set a root level node
-reduced_genre_map <- genre_map %>%
-  filter(genres_broad == 'genre') %>%
-  distinct(next_break, genres_broad, all_plays_broad) %>%
+  rbind(genre_map) %>%
   mutate(
-    level = next_break,
-    genre = genres_broad,
-    parent = '',
-    value = 0,
+    genre = genres_narrow,
+    label = str_to_title(genres_narrow),
+    parent = genres_broad,
+    value = distinct_artists_narrow,
     .keep = 'none'
+  ) %>%
+  rbind(
+    data.frame(genre = 'genres', label = '', parent = '', value = 0L)
   )
-
-
-for(i in seq(-1L, max(genre_map$n_breaks), 1)) {
-
-  reduced_genre_map <- genre_map %>%
-    filter(n_breaks == i, genres_broad %in% reduced_genre_map$genre) %>%
-    group_by(genres_broad) %>%
-    slice_max(order_by = all_plays_narrow, n = 5) %>%
-    ungroup() %>%
-    mutate(
-      level = next_break,
-      genre = genres_narrow,
-      parent = genres_broad,
-      value = all_plays_narrow,
-      .keep = 'none'
-    ) %>%
-    rbind(reduced_genre_map)
-}
-
-
-library(plotly)
-
-
-plot_ly(
-  reduced_genre_map,
-  ids = ~genre,
-  labels = ~genre,
-  parents = ~parent,
-  values = ~value,
-  type = 'sunburst'
-)
 
 
 
 
 save(
-  top_tracks, top_artists, top_albums, top_genres,
+  top_tracks, top_artists, top_albums, top_genres, genre_map,
   file = 'data/top_things.RData'
 )
+
+
+
+
+
 
 
 
@@ -511,19 +465,6 @@ txt_col <- '#e6edf3'
 txt_light_col <- '#adafae'
 
 spotify_green <- '#1DB954'
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 

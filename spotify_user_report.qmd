@@ -20,6 +20,7 @@ library(tidyverse)
 library(reactable)
 library(htmltools)
 library(ggrepel)
+library(plotly)
 
 load('data/summary_date_data.RData')
 load('data/top_things.RData')
@@ -40,7 +41,6 @@ spotify_green <- '#1DB954'
 
 # Reactable Utilities ----
 
-
 trend_indicator <- function(value = 0) {
   args <- list(role = 'img', title = value)
   
@@ -60,6 +60,7 @@ trend_indicator <- function(value = 0) {
 
 
 # Default theme
+
 options(
   reactable.theme = reactableTheme(
     color = txt_col,
@@ -502,7 +503,6 @@ top_artists %>%
   geom_point(aes(size = followers), colour = spotify_green, alpha = 0.5) +
   geom_text_repel(aes(label = artist_name), size = 3.5, colour = txt_light_col) +
   scale_size_binned(range = c(0,10), guide = NULL) +
-  #scale_x_continuous(limits = c(0, NA)) +
   labs(x = 'Your Popularity', y = "Global Popularity") +
   theme(
     axis.text = element_blank(),
@@ -605,6 +605,41 @@ reactable(
 
 ## Top Genres
 
+
+``` {r}
+#| label: genre-sunburst
+#| fig-width: 10
+#| fig-height: 10
+#| fig-cap: "An interactive sunburst chart of genres"
+#| fig-format: svg
+#| warning: false
+
+plot_ly(
+  genre_map,
+  ids = ~genre,
+  labels = ~label,
+  parents = ~parent,
+  values = ~value,
+  type = 'sunburst',
+  maxdepth = 3,
+  hoverinfo = 'label',
+  insidetextorientation = 'radial',
+  rotation = 90
+  ) %>%
+  config(displayModeBar = FALSE) %>%
+  layout(
+    paper_bgcolor = bg_col,
+    font = list(color = txt_col),
+    bargap = 0,
+    showlegend = FALSE,
+    colorway = list(spotify_green),
+    extendsunburstcolors = FALSE # This throws a warning but works...
+  )
+
+
+```
+
+
 ```{r}
 #| label: top-genres-table
 
@@ -639,8 +674,8 @@ reactable(
       format = colFormat(date = TRUE, locales = 'en-AU'),
       width = 120
     ),
-    distinct_tracks = colDef(
-      name = 'Tracks',
+    distinct_artists = colDef(
+      name = 'Artists',
       format = colFormat(separators = TRUE),
       defaultSortOrder = 'desc',
       width = 90,
