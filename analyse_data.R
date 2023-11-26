@@ -14,7 +14,7 @@ load('data/spotify_play_history.RData')
 # Generate datasets for the user that will be loaded and referenced in the qmd
 
 # User ----
-u <- filter(user, display_name == 'Sammy') %>% pull(id)
+u <- filter(user, display_name == 'domotron') %>% pull(id)
 
 # This will hold a filtered and transformed plays dataset used for the remaining
 # analysis. When counting the number of plays of a track, we will exclude any
@@ -364,9 +364,9 @@ top_genres <-
 
 
 genre_breaks <- top_genres %>%
-  select(genres, distinct_artists) %>%
+  select(genres) %>%
   mutate(n_breaks = str_count(genres, '[^[:alpha:]]')) %>%
-  arrange(n_breaks, distinct_artists)
+  arrange(n_breaks)
 
 
 # For each genre that has n breaks, match it with all genres containing it as a
@@ -405,21 +405,19 @@ genre_map <- genre_map %>%
 
 
 
-# Now add narrow genres for our top level genres that will link to a root node.
+# Add narrow genres for our top level genres that will link to a root node.
 # At this point we can also reduce the dataset to the values we will use in the
-# visualisation, and finally add that root node.
+# visualisation.
 
 genre_map <- genre_map %>%
   ungroup() %>%
   filter(n_breaks == 0) %>%
-  distinct(genres_broad, distinct_artists_broad) %>%
+  distinct(genres_broad) %>%
   rename(
-    genres_narrow = genres_broad,
-    distinct_artists_narrow = distinct_artists_broad
+    genres_narrow = genres_broad
   ) %>%
   mutate(
     genres_broad = 'genres',
-    distinct_artists_broad = sum(distinct_artists_narrow),
     n_breaks = -1L,
     next_break = 0L,
     .before = genres_narrow
@@ -429,25 +427,65 @@ genre_map <- genre_map %>%
     genre = genres_narrow,
     label = str_to_title(genres_narrow),
     parent = genres_broad,
-    value = distinct_artists_narrow,
     .keep = 'none'
-  ) %>%
-  rbind(
-    data.frame(genre = 'genres', label = '', parent = '', value = 0L)
   )
 
 
+
+# Values will determine the size of each genre, and the sunburst viz will use
+# the default 'remainder' branchvalues. This means we need a count of artists
+# for each genre where the artist is *not* also associated with a subgenre.
+
+# For each artist, count how many times each genre also has subgenres.
+# Keeping only the ones with no subgenres, summarise the counts and top artists
+ 
+ 
+artist_genre <- top_artists %>%
+  inner_join(artist, by = c('artist.id', 'artist_name')) %>%
+  select(artist_name, all_plays, genres) %>%
+  unnest_longer(genres) %>%
+  group_by(artist_name, all_plays)
+
+
+genre_counts <- artist_genre %>%
+  inner_join(
+    artist_genre, by = c('artist_name', 'all_plays'), 
+    suffix = c('_broad', '_narrow'), relationship = 'many-to-many') %>%
+  mutate(
+    ends = (str_ends(genres_narrow, fixed(genres_broad)) & 
+              genres_narrow != genres_broad)
+    ) %>%
+  group_by(artist_name, all_plays, genres_broad) %>%
+  filter(sum(ends) == 0) %>%
+  group_by(genres_broad) %>%
+  summarise(
+    value = n(),
+    top_artist = paste(
+      'e.g.',str_flatten_comma(head(unique(artist_name), n =3L))
+    )
+  )
+  
+
+# Now add this to our genre map along with a root node
+
+genre_map <- genre_map %>%
+  left_join(genre_counts, by = c('genre' = 'genres_broad')) %>%
+  replace_na(list('value' = 0L, 'top_artist' = '-')) %>%
+  rbind(
+    data.frame(
+      genre = 'genres', 
+      label = '', 
+      parent = '', 
+      value = 0L,
+      top_artist = ''
+    )
+  )
 
 
 save(
   top_tracks, top_artists, top_albums, top_genres, genre_map,
   file = 'data/top_things.RData'
 )
-
-
-
-
-
 
 
 
@@ -465,8 +503,6 @@ txt_col <- '#e6edf3'
 txt_light_col <- '#adafae'
 
 spotify_green <- '#1DB954'
-
-
 
 
 

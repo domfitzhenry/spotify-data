@@ -620,12 +620,26 @@ plot_ly(
   labels = ~label,
   parents = ~parent,
   values = ~value,
+  text = ~top_artist,
   type = 'sunburst',
   maxdepth = 3,
-  hoverinfo = 'label',
+  textinfo = 'label',
+  hovertemplate = paste0(
+    '<b>%{label}</b><br>',
+    '%{percentRoot:.2%}<br>',
+    '<i>%{text}</i>',
+    '<extra></extra>'
+  ),
+  hoverlabel = list(
+    'align' = 'left',
+    'bgcolor' = faint_col,
+    'bordercolor' = bg_col,
+    'font' = list('color' = txt_light_col)
+  ),
+     
   insidetextorientation = 'radial',
   rotation = 90
-  ) %>%
+) %>%
   config(displayModeBar = FALSE) %>%
   layout(
     paper_bgcolor = bg_col,
