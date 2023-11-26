@@ -496,18 +496,50 @@ reactable(
 #| fig-cap: "Your top 10 artists global popularity, bubble size indicates followers"
 #| fig-format: svg
 
+
+# Annotate the top 10 artists by current plays, and the top 5 artists by 
+# followers and popularity.
+
+artist_annotation <- union(
+  slice_max(top_artists, order_by = current_plays, n = 10),
+  slice_max(top_artists, order_by = tibble(followers, artist_popularity), n = 5)
+  ) %>%
+  select(artist_name, current_plays, artist_popularity, followers)
+
+
 top_artists %>%
-  slice_max(order_by = current_plays, n = 10) %>%
-  select(artist_name, current_plays, artist_popularity, followers) %>%
-  ggplot(aes(x = current_plays, y = artist_popularity)) +
-  geom_point(aes(size = followers), colour = spotify_green, alpha = 0.5) +
-  geom_text_repel(aes(label = artist_name), size = 3.5, colour = txt_light_col) +
-  scale_size_binned(range = c(0,10), guide = NULL) +
-  labs(x = 'Your Popularity', y = "Global Popularity") +
+  ggplot(
+    aes(y = scales::rescale(current_plays, c(0, 100)), x = artist_popularity)
+    ) +
+  geom_jitter(
+    aes(size = followers), colour = spotify_green, alpha = 0.5, 
+    width = 0.5, height = 0
+    ) +
+  geom_text_repel(
+    data = artist_annotation,
+    aes(label = artist_name), size = 3, colour = txt_col
+    ) +
+  scale_x_continuous(expand = expansion(mult = c(0.01, 0.05))) +
+  scale_y_continuous(
+    limits = c(0, 100),
+    expand = expansion(mult = c(0.03, 0.05))
+    ) +
+  scale_size_binned(range = c(1,10), guide = NULL, n.breaks = 10) +
+  geom_abline(
+    intercept = 50, slope = 2, 
+    color = faint_col, linetype = 'dotted'
+    ) +
+  annotate(
+    'text', label = 'The Hipster Zone',
+    x = 5, y = 90, 
+    colour = faint_col, hjust = 0, size = 3, fontface = 'italic'
+    ) +
+  coord_cartesian(clip = 'off') +
+  labs(y = 'Your Popularity', x = "Global Popularity") +
   theme(
     axis.text = element_blank(),
     axis.ticks = element_blank(),
-    axis.title = element_text(colour = txt_col),
+    axis.title = element_text(colour = txt_light_col),
     axis.line = element_line(colour = faint_col),
     
     
