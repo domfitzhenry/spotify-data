@@ -28,8 +28,8 @@ pcn <- data.frame(
     ordered(c('C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'))
 )
 
-user_plays <- 
-  filter(plays, username == u) %>%
+user_plays <- plays %>%
+  filter(username == u) %>%
   inner_join(track, by = 'track.id') %>%
   inner_join(album, by = 'album.id', suffix = c('_track', '_album')) %>%
   left_join(track_features, by = 'track.id') %>%
@@ -359,77 +359,76 @@ top_genres <-
 # Assume that a broader genre will be a shorter string contained within a broad
 # genre - e.g. rock -> alternative rock -> soft alternative rock. 
 
-# Find the number of words in a genre, start with single words, and then search
-# for broader genres. Treat anything non-alpha as a break.
+
+# Genre Seeds - no spotifyr for this...
+genre_seed <- data.frame(genres = c(
+  'acoustic', 'afrobeat', 'alt-rock', 'alternative', 'ambient', 'anime', 
+  'black-metal', 'bluegrass', 'blues', 'bossanova', 'brazil', 'breakbeat', 
+  'british', 'cantopop', 'chicago-house', 'children', 'chill', 'classical', 
+  'club', 'comedy', 'country', 'dance', 'dancehall', 'death-metal', 
+  'deep-house', 'detroit-techno', 'disco', 'disney', 'drum-and-bass', 
+  'dub', 'dubstep', 'edm', 'electro', 'electronic', 'emo', 'folk', 'forro', 
+  'french', 'funk', 'garage', 'german', 'gospel', 'goth', 'grindcore', 'groove', 
+  'grunge', 'guitar', 'happy', 'hard-rock', 'hardcore', 'hardstyle', 
+  'heavy-metal', 'hip-hop', 'holidays', 'honky-tonk', 'house', 'idm', 
+  'indian', 'indie', 'indie-pop', 'industrial', 'iranian', 'j-dance', 
+  'j-idol', 'j-pop', 'j-rock', 'jazz', 'k-pop', 'kids', 'latin', 'latino', 
+  'malay', 'mandopop', 'metal', 'metal-misc', 'metalcore', 'minimal-techno', 
+  'movies', 'mpb', 'new-age', 'new-release', 'opera', 'pagode', 'party', 
+  'philippines-opm', 'piano', 'pop', 'pop-film', 'post-dubstep', 'power-pop', 
+  'progressive-house', 'psych-rock', 'punk', 'punk-rock', 'r-n-b', 'rainy-day', 
+  'reggae', 'reggaeton', 'road-trip', 'rock', 'rock-n-roll', 'rockabilly', 
+  'romance', 'sad', 'salsa', 'samba', 'sertanejo', 'show-tunes', 
+  'singer-songwriter', 'ska', 'sleep', 'songwriter', 'soul', 'soundtracks', 
+  'spanish', 'study', 'summer', 'swedish', 'synth-pop', 'tango', 'techno', 
+  'trance', 'trip-hop', 'turkish', 'work-out', 'world-music',
+  
+  # Some additional root level ones that make sense to someone who doesn't know
+  # much about the genres.
+  'bass'
+  
+))
 
 
-genre_breaks <- top_genres %>%
+genre_list <- unnest_longer(artist, genres) %>%
   select(genres) %>%
-  mutate(n_breaks = str_count(genres, '[^[:alpha:]]')) %>%
-  arrange(n_breaks)
-
-
-# For each genre that has n breaks, match it with all genres containing it as a
-# substring that have n + 1 breaks. The problem with this approach is there 
-# might be narrow genres that map to more than one broad genre - e.g. should 
-# "funk rock" map to "funk" or "rock"?
-
-# To avoid this, only match at the end of the narrow genre. This is good as it
-# removes partial word matches which we don't want in most cases, and we assume
-# earlier words are more like an adjective.
-
-# Also note we are losing any genres with no parents or descendants in this step
-
-genre_map <- genre_breaks %>%
-  mutate(next_break = n_breaks + 1L) %>%
-  inner_join(
-    genre_breaks, by = c("next_break" = "n_breaks"), 
-    suffix = c('_broad', '_narrow'), relationship = "many-to-many"
-  ) %>%
-  filter(str_ends(genres_narrow, fixed(genres_broad)))
-
-
-
-# And there might be some narrow genres that don't map back to a genre 
-# containing n-1 breaks - e.g. "hip hop" doesn't have a corresponding "hop"
-# It seems reasonable to bring these up to the top level.
-
-genre_map <- genre_map %>%
+  bind_rows(genre_seed) %>%
+  filter(genres %in% top_genres$genres) %>%
+  distinct(genres) %>%
   mutate(
-    n_breaks = if_else(
-      genres_broad %in% genre_map$genres_narrow,
-      n_breaks,
-      0
-    )
+    clean_genre = str_squish(str_replace_all(genres, '[\\s\\-]', ' '))
   )
 
 
+# There are some nodes we don't want to treat as atomic, remove them so they
+# get bundled with the next node - e.g. no such thing as "hop" in "hip hop"
 
-# Add narrow genres for our top level genres that will link to a root node.
-# At this point we can also reduce the dataset to the values we will use in the
-# visualisation.
+stop_nodes <- c('fi', 'hop', 'revival', 'music', 'cover', 'trip', 'nova')
 
-genre_map <- genre_map %>%
-  ungroup() %>%
-  filter(n_breaks == 0) %>%
-  distinct(genres_broad) %>%
-  rename(
-    genres_narrow = genres_broad
-  ) %>%
+
+genre_paths <- genre_list %>%
   mutate(
-    genres_broad = 'genres',
-    n_breaks = -1L,
-    next_break = 0L,
-    .before = genres_narrow
+    node = lapply(str_split(clean_genre, ' '), rev)
   ) %>%
-  rbind(genre_map) %>%
+  unnest_longer(node, indices_to = 'level') %>%
+  group_by(genres) %>%
   mutate(
-    genre = genres_narrow,
-    label = str_to_title(genres_narrow),
-    parent = genres_broad,
-    .keep = 'none'
+    path = accumulate(node, ~ paste(.y, .x)),
+    inferred = (!path %in% genre_list$clean_genre)
+  ) %>%
+  filter(!(node %in% stop_nodes & inferred)) %>%
+  # Now to determine if we keep inferred genres, the approach will be:
+  #   If the earliest actual genre is the leaf, keep the inferred root.
+  #   Discard all (other) inferred genres.
+  mutate(
+    only_leaf = min(if_else(inferred, 99, level)) == max(level)
+  ) %>%
+  filter(!inferred | (level == 1 & only_leaf)) %>%
+  # NOTE! This does not guarantee distinct paths!
+  # This will be handled when we build the genre map
+  mutate(
+    level = row_number()
   )
-
 
 
 # Values will determine the size of each genre, and the sunburst viz will use
@@ -438,42 +437,46 @@ genre_map <- genre_map %>%
 
 # For each artist, count how many times each genre also has subgenres.
 # Keeping only the ones with no subgenres, summarise the counts and top artists
- 
- 
+
+
 artist_genre <- top_artists %>%
   inner_join(artist, by = c('artist.id', 'artist_name')) %>%
   select(artist_name, all_plays, genres) %>%
   unnest_longer(genres) %>%
-  group_by(artist_name, all_plays)
-
-
-genre_counts <- artist_genre %>%
-  inner_join(
-    artist_genre, by = c('artist_name', 'all_plays'), 
-    suffix = c('_broad', '_narrow'), relationship = 'many-to-many') %>%
-  mutate(
-    ends = (str_ends(genres_narrow, fixed(genres_broad)) & 
-              genres_narrow != genres_broad)
-    ) %>%
-  group_by(artist_name, all_plays, genres_broad) %>%
-  filter(sum(ends) == 0) %>%
-  group_by(genres_broad) %>%
+  inner_join(genre_paths, by = 'genres', relationship = 'many-to-many') %>%
+  select(artist_name, genres, clean_genre, level, path, all_plays) %>%
+  group_by(artist_name, path) %>%
+  filter(n() == 1, clean_genre == path) %>%
+  group_by(path) %>%
+  arrange(desc(all_plays)) %>%
   summarise(
-    value = n(),
+    value = sum(all_plays),#n(),
     top_artist = paste(
-      'e.g.',str_flatten_comma(head(unique(artist_name), n =3L))
+      'e.g.',str_flatten_comma(head(artist_name, n =3L))
     )
   )
-  
 
-# Now add this to our genre map along with a root node
 
-genre_map <- genre_map %>%
-  left_join(genre_counts, by = c('genre' = 'genres_broad')) %>%
-  replace_na(list('value' = 0L, 'top_artist' = '-')) %>%
-  rbind(
+genre_map <- genre_paths %>%
+  left_join(artist_genre, by = 'path') %>%
+  mutate(
+    genre = path,
+    label = str_to_title(path),
+    parent = coalesce(lag(path), 'root'),
+    value = coalesce(value, 0L),
+    top_artist = coalesce(top_artist, ''),
+    .keep = 'none'
+  ) %>%
+  group_by(genre) %>%
+  # Where a genre links to both the root node and a different parent, discard 
+  # the link to the root.
+  filter(!(n_distinct(parent) > 1 & parent == 'root')) %>%
+  ungroup() %>%
+  select(genre, label, parent, value, top_artist) %>%
+  distinct() %>%
+  bind_rows(
     data.frame(
-      genre = 'genres', 
+      genre = 'root', 
       label = '', 
       parent = '', 
       value = 0L,
@@ -482,15 +485,11 @@ genre_map <- genre_map %>%
   )
 
 
+
 save(
   top_tracks, top_artists, top_albums, top_genres, genre_map,
   file = 'data/top_things.RData'
 )
-
-
-
-
-
 
 
 
@@ -507,6 +506,9 @@ spotify_green <- '#1DB954'
 
 
 
+
+
+             
 
 ## Track audio features ----
 
