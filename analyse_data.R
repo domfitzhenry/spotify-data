@@ -50,7 +50,7 @@ user_plays <- plays %>%
   select(!key_factor)
 
 last_date <- max(date(user_plays$ts))
-first_date <- last_date - years(1)
+first_date <- floor_date(last_date, 'year')
 
 user_plays <- mutate(user_plays, is_current = first_date <= ts)
 
@@ -403,7 +403,7 @@ genre_list <- unnest_longer(artist, genres) %>%
 # There are some nodes we don't want to treat as atomic, remove them so they
 # get bundled with the next node - e.g. no such thing as "hop" in "hip hop"
 
-stop_nodes <- c('fi', 'hop', 'revival', 'music', 'cover', 'trip', 'nova')
+stop_nodes <- c('fi', 'hop', 'revival', 'music', 'cover', 'trip', 'nova', 'bass')
 
 
 genre_paths <- genre_list %>%
@@ -486,6 +486,8 @@ genre_map <- genre_paths %>%
 
 
 
+
+
 save(
   top_tracks, top_artists, top_albums, top_genres, genre_map,
   file = 'data/top_things.RData'
@@ -495,13 +497,13 @@ save(
 
 # Colours ----
 # Temporarily adding here while playing with plots
-bg_col <- '#060606'
-faint_col <- '#161b22'
-
-txt_col <- '#e6edf3'
-txt_light_col <- '#adafae'
-
-spotify_green <- '#1DB954'
+# bg_col <- '#060606'
+# faint_col <- '#161b22'
+# 
+# txt_col <- '#e6edf3'
+# txt_light_col <- '#adafae'
+# 
+# spotify_green <- '#1DB954'
 
 
 
