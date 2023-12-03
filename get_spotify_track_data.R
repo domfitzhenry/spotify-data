@@ -35,10 +35,15 @@ current_plays <-
   select(all_of(retain_cols))
   
 
-# RData file from prior executions
+# RData files from prior executions
 if (file.exists('data/spotify_play_history.RData')) {
   load('data/spotify_play_history.RData')
 }
+
+if (file.exists('data/spotify_data_raw.RData')) {
+  load('data/spotify_data_raw.RData')
+}
+
 
 
 if (exists('plays')) {
@@ -51,41 +56,6 @@ if (exists('plays')) {
 
 
 # Spotify API Setup ----
-
-# Given a named vector of ids, call the function f with an access token in 
-# chunks return a row-bound data frame. Used for batching API calls.
-call_by_chunks <- function(ids, FUN, token, n = 50, sleep = 0.1){
-  
-  result <- data.frame()
-  
-  message(
-    paste('\n ', as.character(now()), '- Calling', nrow(ids), 'ids on the', 
-    as.character(substitute(FUN)), 'endpoint.')
-  )
-  
-  # Split into list of n comma separated values
-  ids <- rename_with(ids, ~ 'id')
-  chunks <- split(ids$id, ceiling(seq_along(ids$id) / n)) %>%
-    lapply(paste, collapse = ',')
-  
-  # We could just vectorise this, but less control over frequency of calls, 
-  # and no progress bar!
-  # result <- map_df(chunks, ~ f(., authorization = token))
-  
-  # Add a progress bar
-  pb <- txtProgressBar(min = 0, max=length(chunks), width = 50, style = 3)
-  
-  for (i in seq(1, length(chunks))) {
-    r <- FUN(chunks[i], authorization = token)
-    result <- bind_rows(result, r)
-    setTxtProgressBar(pb, i)
-    Sys.sleep(sleep)
-  }
-  
-  close(pb)
-  
-  return(result)
-}
 
 # AUTHENTICATION
 
@@ -100,24 +70,106 @@ check_key <- function(key_name) {
   return(key_get(key_name))
 }
 
-
 Sys.setenv(SPOTIFY_CLIENT_ID = check_key('SPOTIFY_CLIENT_ID'))
 Sys.setenv(SPOTIFY_CLIENT_SECRET = check_key('SPOTIFY_CLIENT_SECRET'))
 
 access_token <- get_spotify_access_token()
+token_expires <- now() + hours()
 
+
+# Function to check and refresh the token if it will expire in refresh_mins mins
+
+check_token_expiry <- function(refresh_mins = 5) {
+  if(token_expires < now() + minutes(refresh_mins)) {
+    assign('token_expires', now() + hours(), envir = .GlobalEnv)
+    assign('access_token', get_spotify_access_token(), envir = .GlobalEnv)
+  }
+}
+
+
+# Given a named vector of ids, call the function f with an access token in 
+# chunks return a row-bound data frame. Used for batching API calls.
+
+# keep_id will save whatever id was used to call the function, which is needed
+# for related artists. The column name will be '1'.
+call_by_chunks <- function(ids, FUN, n = 50, keep_id = FALSE, sleep = 0.5) {
+    
+    result <- data.frame()
+    
+    message(
+      paste('\n ', as.character(now()), '- Calling', nrow(ids), 'ids on the', 
+            as.character(substitute(FUN)), 'endpoint.')
+    )
+    
+    # Split into list of n comma separated values
+    ids <- rename_with(ids, ~ 'id')
+    chunks <- split(ids$id, ceiling(seq_along(ids$id) / n)) %>%
+      lapply(paste, collapse = ',')
+    
+    # We could just vectorise this, but less control over frequency of calls, 
+    # and no progress bar!
+    # result <- map_df(chunks, ~ f(., authorization = token))
+    
+    # Add a progress bar
+    pb <- txtProgressBar(min = 0, max=length(chunks), width = 50, style = 3)
+    
+    for (i in seq(1, length(chunks))) {
+      # Refresh the token as needed - this happens here in case we end up
+      # taking over on hour on a single endpoint.
+      check_token_expiry()
+      
+      x <- chunks[i]
+      r <- FUN(x, authorization = access_token)
+      
+      if(keep_id) {
+        r <- bind_cols(r, list(x))
+      }
+      
+      result <- bind_rows(result, r)
+      
+      # We have limited control over handling rate limiting, spotifyr will just
+      # wait for the prescribed wait time. After a series of foolish calls I
+      # ended up in API jail for a day and lost all progress, so we'll 
+      # periodically copy where we are up to just in case.
+      # We can spare the memory more than the time...
+      if(i %% 10 == 0) {
+        assign('tmp_results', result, envir = .GlobalEnv)
+      }
+      
+      setTxtProgressBar(pb, i)
+      Sys.sleep(sleep)
+    }
+    
+    close(pb)
+    
+    return(result)
+  }
 
 
 # Get Spotify Data ----
 
-t <- distinct(plays, track.id)
-
-
-  
 message('Getting Spotify Data.')
 
-# Get all track details
-track_raw <- call_by_chunks(t, get_tracks, access_token)
+# We don't need to call the API for things we saved from earlier runs, so each
+# time we have a list of ids, check they don't already exist in our raw data
+# and bind results for the new ones. 
+
+
+## Tracks ----
+x <- distinct(plays, track.id)
+
+if(exists('track_raw')) {
+  x <- filter(x, !track.id %in% track_raw$id)
+  
+  if(nrow(x) > 0) {
+    track_raw <- track_raw %>%
+      bind_rows(call_by_chunks(x, get_tracks))
+  }
+  
+} else {
+  track_raw <- call_by_chunks(x, get_tracks)
+}
+
 
 track <- track_raw %>%
   mutate(
@@ -136,8 +188,21 @@ track <- track_raw %>%
     track_popularity = popularity
   )
 
-track_features_raw <- 
-  call_by_chunks(t, get_track_audio_features, access_token, 100)
+
+### Track Features ----
+x <- select(track_raw, id)
+
+if(exists('track_features_raw')) {
+  x <- filter(x, !id %in% track_features_raw$id)
+  
+  if(nrow(x) > 0) {
+    track_features_raw <- track_features_raw %>%
+      bind_rows(call_by_chunks(x, get_track_audio_features, 100))
+  }
+  
+} else {
+  track_features_raw <- call_by_chunks(x, get_track_audio_features, 100)
+}
 
 track_features <- track_features_raw %>%
   select(
@@ -146,9 +211,23 @@ track_features <- track_features_raw %>%
   ) %>%
   rename(track.id = id)
 
-# Get album details
-album_raw <- distinct(track, album.id) %>%
-  call_by_chunks(get_albums, access_token, 20)
+
+
+## Albums ----
+x <- distinct(track, album.id)
+
+if(exists('album_raw')) {
+  x <- filter(x, !album.id %in% album_raw$id)
+  
+  if(nrow(x) > 0) {
+    album_raw <- album_raw %>%
+      bind_rows(call_by_chunks(x, get_albums, 20))
+  }
+  
+} else {
+  album_raw <- call_by_chunks(x, get_albums, 20)
+}
+
   
 album <- album_raw %>%
   select(
@@ -160,11 +239,23 @@ album <- album_raw %>%
     album_popularity = popularity
   )
 
-# Get all artist details
-artist_raw <- 
-  unnest_longer(track, artist.id) %>%
-  distinct(artist.id) %>%
-  call_by_chunks(get_artists, access_token)
+
+
+## Artists ----
+x <- unnest_longer(track, artist.id) %>%
+  distinct(artist.id)
+
+if(exists('artist_raw')) {
+  x <- filter(x, !artist.id %in% artist_raw$id)
+  
+  if(nrow(x) > 0) {
+    artist_raw <- artist_raw %>%
+      bind_rows(call_by_chunks(x, get_artists, 20))
+  }
+  
+} else {
+  artist_raw <- call_by_chunks(x, get_artist, 20)
+}
 
 artist <- artist_raw %>%
   select(id, name, popularity, followers.total, genres) %>%
@@ -175,28 +266,54 @@ artist <- artist_raw %>%
     followers = followers.total
   )
 
-# For user display names
+
+
+## Related Artists ----
+x <- select(artist, artist.id)
+
+if(exists('related_artist_raw')) {
+  x <- filter(x, !artist.id %in% related_artist_raw$'1')
+  
+  if(nrow(x) > 0) {
+    related_artist_raw <- related_artist_raw %>%
+      bind_rows(call_by_chunks(x, get_related_artists, 1, keep_id = TRUE))
+  }
+  
+} else {
+  related_artist_raw <- 
+    call_by_chunks(x, get_related_artists, 1, keep_id = TRUE)
+}
+
+
+
+## Users ----
 user_raw <- 
   distinct(plays, username) %>%
-  call_by_chunks(get_user_profile, access_token, 1)
+  call_by_chunks(get_user_profile,  1)
 
 user <- user_raw %>%
-  select(id, display_name, any_of('images'))
+  select(id, display_name, any_of('images.url1'))
 
-
-# Save output and cleanup
-save(
-  plays, track, track_features, album, artist, user, 
-  file = 'data/spotify_play_history.RData'
-)
-
-save(
-  track_raw, track_features_raw, album_raw, artist_raw, user_raw, 
-  file = 'data/spotify_data_raw.RData'
-)
-
-remove(list = ls())
 
 message('Data Loaded.')
 
 
+# Save output and cleanup ----
+
+save(
+  plays, 
+  file = 'data/spotify_play_history.RData')
+
+save(
+  track, track_features, album, artist, user, 
+  file = 'data/spotify_data.RData'
+)
+
+
+save(
+  track_raw, track_features_raw, album_raw, artist_raw, related_artists_raw,
+  user_raw, 
+  file = 'data/spotify_data_raw.RData'
+)
+
+remove(list = ls())

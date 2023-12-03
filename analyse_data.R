@@ -9,12 +9,13 @@ if (force_refresh) source('get_spotify_track_data.R')
 
 
 load('data/spotify_play_history.RData')
+load('data/spotify_data.RData')
 
 
 # Generate datasets for the user that will be loaded and referenced in the qmd
 
 # User ----
-u <- filter(user, display_name == 'domotron') %>% pull(id)
+u <- filter(user, display_name == 'Sammy') %>% pull(id)
 
 # This will hold a filtered and transformed plays dataset used for the remaining
 # analysis. When counting the number of plays of a track, we will exclude any
@@ -113,7 +114,7 @@ pretty_seconds <- function(secs) {
     minute = 60,
     hour   = 3600,
     day    = 86400,
-    week   = 604800,
+    #week   = 604800,
     year   = 31557600
   )
   
@@ -389,12 +390,13 @@ genre_seed <- data.frame(genres = c(
   
 ))
 
+# Filter the list of genres we want to work with to only those with at least
+# 3 distinct artists and 5 current plays
 
-genre_list <- unnest_longer(artist, genres) %>%
+
+genre_list <- top_genres %>%
+  filter(distinct_artists >= 3, current_plays >= 5) %>%
   select(genres) %>%
-  bind_rows(genre_seed) %>%
-  filter(genres %in% top_genres$genres) %>%
-  distinct(genres) %>%
   mutate(
     clean_genre = str_squish(str_replace_all(genres, '[\\s\\-]', ' '))
   )
