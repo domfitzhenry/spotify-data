@@ -36,3 +36,5 @@ rsconnect/
 # Source data
 data-raw/
 data/
+# Output html
+*.html

@@ -20,6 +20,7 @@ library(tidyverse)
 library(reactable)
 library(htmltools)
 library(ggrepel)
+library(ggridges)
 library(plotly)
 
 load('data/summary_date_data.RData')
@@ -59,7 +60,7 @@ trend_indicator <- function(value = 0) {
 }
 
 
-# Default theme
+# Default reactable theme
 
 options(
   reactable.theme = reactableTheme(
@@ -211,19 +212,17 @@ plays_by_date %>%
   )
 ```
 
+::: {layout="[-5, 50, -10, 30, -5]"}
+|          |            Last Year |           All-Time |
+|---------:|---------------------:|-------------------:|
+|  Streams |  `r current_streams` |  `r total_streams` |
+| Sessions | `r current_sessions` | `r total_sessions` |
+| Duration | `r current_duration` | `r total_duration` |
+|   Tracks |   `r current_tracks` |   `r total_tracks` |
+|   Albums |   `r current_albums` |   `r total_albums` |
+|  Artists |  `r current_artists` |  `r total_artists` |
 
-
-:::::{layout="[-5, 50, -10, 30, -5]"}
-
-|          |           Last Year |         All-Time |
-|---------:|--------------------:|-----------------:|
-| Streams  |`r current_streams`  |`r total_streams` |
-| Duration |`r current_duration` |`r total_duration`|
-| Tracks   |`r current_tracks`   |`r total_tracks`  |
-| Albums   |`r current_albums`   |`r total_albums`  |
-| Artists  |`r current_artists`  |`r total_artists` |
-
-: Listening Overview {.hover tbl-colwidths="[20, 40, 40]"}
+: Listening Overview {.hover tbl-colwidths="\[20, 40, 40\]"}
 
 ```{r}
 #| label: clock24
@@ -261,8 +260,7 @@ plays_by_hour %>%
   )
 
 ```
-
-:::::
+:::
 
 ## Top Tracks
 
@@ -344,59 +342,66 @@ reactable(
 
 ```
 
-## Top Albums
+### Track Features
 
-``` {r}
-#| label: album-release-bars
+```{r}
+#| label: track-features
 #| fig-width: 13.5
 #| fig-height: 5
-#| fig-cap: "Albums by release year"
 #| fig-format: svg
+#| message: false
 
-top_albums %>%
-  group_by(release_year) %>%
-  summarise(
-    n_albums = n(),
-    total_plays = sum(all_plays)
-  ) %>%
-  ggplot(
-    aes(x = release_year, y = n_albums, 
-        group = release_year, fill = total_plays)
-    ) +
-  geom_col() +
-  scale_fill_gradient(
-    low = faint_col, high = spotify_green, name = 'Plays',
-    n.breaks = 5
-    ) +
-  guides(fill = guide_colorbar(
-    ticks.colour = bg_col, frame.colour = bg_col)
-    ) +
-  scale_y_continuous(expand = expansion(mult = c(0.01, 0.05))) +
-  scale_x_continuous(breaks = seq(1960, 2030, 10))  +
-  labs(x = 'Release Year', y = 'Albums') +
+user_track_features %>%
+  ggplot(aes(x = danceability, y = month_played, group = month_played)) +
+  geom_density_ridges(colour = faint_col, fill = spotify_green, na.rm = TRUE) +
+  scale_x_continuous(breaks = c(0, 1), labels = c('Low', 'High')) +
+  theme_ridges(grid = FALSE, font_size = 10) +
+  labs(title = 'Danceability') +
   theme(
-    rect = element_rect(colour = bg_col, fill = bg_col),
-    text = element_text(colour = txt_light_col),
-    
-    axis.line.x = element_line(linetype = 'solid'),
-    axis.text.x = element_text(colour = txt_col),
-    axis.ticks = element_blank(),
-    
-    legend.position = c(0.05, 0.8),
-    legend.title.align = 0,
-    legend.title = element_text(size = 8),
-    
+    axis.text = element_text(colour = txt_light_col),
+    axis.title = element_blank(),
     plot.background = element_rect(colour = bg_col, fill = bg_col),
-    
     panel.background = element_rect(colour = bg_col, fill = bg_col),
-    panel.border = element_blank(),
-    panel.grid.major.x  = element_line(colour = faint_col),
-    panel.grid.major.y = element_line(colour = faint_col, linetype = 'dotted'),
-    panel.grid.minor = element_blank()
+    plot.title = element_text(colour = txt_col, hjust = 0.5, size = 14)
+  )
+
+
+user_track_features %>%
+  ggplot(aes(x = energy, y = month_played, group = month_played)) +
+  geom_density_ridges(colour = faint_col, fill = spotify_green, na.rm = TRUE) +
+  scale_x_continuous(breaks = c(0, 1), labels = c('Low', 'High')) +
+  theme_ridges(grid = FALSE, font_size = 10) +
+  labs(title = 'Energy') +
+  theme(
+    axis.text = element_text(colour = txt_light_col),
+    axis.title = element_blank(),
+    plot.background = element_rect(colour = bg_col, fill = bg_col),
+    panel.background = element_rect(colour = bg_col, fill = bg_col),
+    plot.title = element_text(colour = txt_col, hjust = 0.5, size = 14)
+  )
+
+
+
+# Valence is continuous from 0 (negative emotion) to 1 (positive emotion)
+user_track_features %>%
+  ggplot(aes(x = valence, y = month_played, group = month_played)) +
+  geom_density_ridges(colour = faint_col, fill = spotify_green, na.rm = TRUE) +
+  scale_x_continuous(breaks = c(0, 1), labels = c('Low', 'High')) +
+  theme_ridges(grid = FALSE, font_size = 10) +
+  labs(title = 'Valence') +
+  theme(
+    axis.text = element_text(colour = txt_light_col),
+    axis.title = element_blank(),
+    plot.background = element_rect(colour = bg_col, fill = bg_col),
+    panel.background = element_rect(colour = bg_col, fill = bg_col),
+    plot.title = element_text(colour = txt_col, hjust = 0.5, size = 14)
   )
 
 
 ```
+
+
+## Top Albums
 
 ```{r}
 #| label: top-albums-table
@@ -483,77 +488,60 @@ reactable(
 
 ```
 
-
-
-
-
-## Top Artists
-
-``` {r}
-#| label: artist-popularity-bubble
+```{r}
+#| label: album-release-bars
 #| fig-width: 13.5
 #| fig-height: 5
-#| fig-cap: "Your top 10 artists global popularity, bubble size indicates followers"
+#| fig-cap: "Albums by release year"
 #| fig-format: svg
 
-
-# Annotate the top 10 artists by current plays, and the top 5 artists by 
-# followers and popularity.
-
-artist_annotation <- union(
-  slice_max(top_artists, order_by = current_plays, n = 10),
-  slice_max(top_artists, order_by = tibble(followers, artist_popularity), n = 5)
+top_albums %>%
+  filter(current_plays >= 1) %>%
+  group_by(release_year) %>%
+  summarise(
+    n_albums = n(),
+    total_plays = sum(current_plays)
   ) %>%
-  select(artist_name, current_plays, artist_popularity, followers)
-
-
-top_artists %>%
   ggplot(
-    aes(y = scales::rescale(current_plays, c(0, 100)), x = artist_popularity)
+    aes(x = release_year, y = n_albums, 
+        group = release_year, fill = total_plays)
     ) +
-  geom_jitter(
-    aes(size = followers), colour = spotify_green, alpha = 0.5, 
-    width = 0.5, height = 0
+  geom_col() +
+  scale_fill_gradient(
+    low = faint_col, high = spotify_green, name = 'Plays',
+    n.breaks = 5
     ) +
-  geom_text_repel(
-    data = artist_annotation,
-    aes(label = artist_name), size = 3, colour = txt_col
+  guides(fill = guide_colorbar(
+    ticks.colour = bg_col, frame.colour = bg_col)
     ) +
-  scale_x_continuous(expand = expansion(mult = c(0.01, 0.05))) +
-  scale_y_continuous(
-    limits = c(0, 100),
-    expand = expansion(mult = c(0.03, 0.05))
-    ) +
-  scale_size_binned(range = c(1,10), guide = NULL, n.breaks = 10) +
-  geom_abline(
-    intercept = 50, slope = 2, 
-    color = faint_col, linetype = 'dotted'
-    ) +
-  annotate(
-    'text', label = 'The Hipster Zone',
-    x = 5, y = 90, 
-    colour = faint_col, hjust = 0, size = 3, fontface = 'italic'
-    ) +
-  coord_cartesian(clip = 'off') +
-  labs(y = 'Your Popularity', x = "Global Popularity") +
+  scale_y_continuous(expand = expansion(mult = c(0.01, 0.05))) +
+  scale_x_continuous(breaks = seq(1960, 2030, 10))  +
+  labs(x = 'Release Year', y = 'Albums') +
   theme(
-    axis.text = element_blank(),
-    axis.ticks = element_blank(),
-    axis.title = element_text(colour = txt_light_col),
-    axis.line = element_line(colour = faint_col),
+    rect = element_rect(colour = bg_col, fill = bg_col),
+    text = element_text(colour = txt_light_col),
     
+    axis.line.x = element_line(linetype = 'solid'),
+    axis.text.x = element_text(colour = txt_col),
+    axis.ticks = element_blank(),
+    
+    legend.position = c(0.05, 0.8),
+    legend.title.align = 0,
+    legend.title = element_text(size = 8),
     
     plot.background = element_rect(colour = bg_col, fill = bg_col),
     
     panel.background = element_rect(colour = bg_col, fill = bg_col),
-    panel.grid  = element_line(colour = txt_light_col),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.grid.major.x  = element_line(colour = faint_col),
+    panel.grid.major.y = element_line(colour = faint_col, linetype = 'dotted'),
+    panel.grid.minor = element_blank()
   )
 
 
 ```
 
+## Top Artists
 
 ```{r}
 #| label: top-artists-table
@@ -634,11 +622,76 @@ reactable(
 
 ```
 
+```{r}
+#| label: artist-popularity-bubble
+#| fig-width: 13.5
+#| fig-height: 5
+#| fig-cap: "Your top artists popularity, bubble size indicates followers"
+#| fig-format: svg
 
-## Top Genres
+
+# Annotate the top 10 artists by current plays, and the top 5 artists by 
+# followers and popularity.
+
+artist_annotation <- union(
+  slice_max(top_artists, order_by = current_plays, n = 10),
+  slice_max(top_artists, order_by = tibble(followers, artist_popularity), n = 5)
+  ) %>%
+  select(artist_name, current_plays, artist_popularity, followers)
 
 
-``` {r}
+artist_annotation %>%
+  ggplot(
+    aes(y = scales::rescale(current_plays, c(0, 100)), x = artist_popularity)
+    ) +
+  geom_jitter(
+    aes(size = followers), colour = spotify_green, alpha = 0.8, 
+    width = 0.5, height = 0
+    ) +
+  geom_text_repel(
+    data = artist_annotation,
+    aes(label = artist_name), size = 3, colour = txt_col
+    ) +
+  scale_x_continuous(
+    limits = c(0, 100), expand = expansion(mult = c(0, 0.05))
+    ) +
+  scale_y_continuous(
+    limits = c(0, 100),
+    expand = expansion(mult = c(0.03, 0.05))
+    ) +
+  scale_size_area(max_size = 10, guide = NULL) +
+  geom_abline(
+    intercept = 20, slope = 2.25, 
+    color = faint_col, linetype = 'dotted'
+    ) +
+  annotate(
+    'text', label = 'The Hipster Zone',
+    x = 10, y = 85, 
+    colour = faint_col, hjust = 0, size = 3, fontface = 'italic'
+    ) +
+  coord_cartesian(clip = 'off') +
+  labs(y = 'Your Popularity', x = "Global Popularity") +
+  theme(
+    axis.text = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_text(colour = txt_light_col),
+    axis.line = element_line(colour = faint_col),
+    
+    
+    plot.background = element_rect(colour = bg_col, fill = bg_col),
+    
+    panel.background = element_rect(colour = bg_col, fill = bg_col),
+    panel.grid  = element_line(colour = txt_light_col),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+  )
+
+
+```
+
+## Genres
+
+```{r}
 #| label: genre-sunburst
 #| fig-width: 10
 #| fig-height: 10
@@ -654,7 +707,7 @@ plot_ly(
   values = ~value,
   text = ~top_artist,
   type = 'sunburst',
-  maxdepth = 3,
+  maxdepth = 2,
   textinfo = 'label',
   hovertemplate = paste0(
     '<b>%{label}</b><br>',
@@ -684,73 +737,3 @@ plot_ly(
 
 
 ```
-
-
-```{r}
-#| label: top-genres-table
-
-reactable(
-  top_genres,
-  searchable = TRUE,
-  highlight = TRUE,
-  wrap = FALSE,
-  paginationType = 'simple',
-  minRows = 10,
-  columns = list(
-    current_rank = colDef(
-      header = tagList(
-        span('#', 'aria-hidden' = 'true', title = 'Position')
-      ),
-      width = 50
-    ),
-    rank_diff = colDef(
-      header = span('Trend', class = 'sr-only'),
-      sortable = FALSE,
-      align = 'center',
-      width = 40,
-      cell = function(value) trend_indicator(value)
-    ),
-    genres = colDef(
-      name = 'Genre',
-      resizable = TRUE,
-      minWidth = 200
-    ),
-    first_listen = colDef(
-      name = 'First Play',
-      format = colFormat(date = TRUE, locales = 'en-AU'),
-      width = 120
-    ),
-    distinct_artists = colDef(
-      name = 'Artists',
-      format = colFormat(separators = TRUE),
-      defaultSortOrder = 'desc',
-      width = 90,
-      class = 'number'
-    ),
-    current_plays = colDef(
-      name = 'Last Year',
-      format = colFormat(separators = TRUE),
-      defaultSortOrder = 'desc',
-      width = 100,
-      class = 'number'
-    ),
-    all_plays = colDef(
-      name = 'All Time',
-      format = colFormat(separators = TRUE),
-      defaultSortOrder = 'desc',
-      width = 90,
-      class = 'number'
-    )
-  ),
-  language = reactableLang(
-    searchPlaceholder = "Filter genres",
-    noData = "No genres found",
-    pageInfo = "{rowStart}\u2013{rowEnd} of {rows} genres",
-    pagePrevious = "\u276e",
-    pageNext = "\u276f",
-  )
-)
-
-```
-
-

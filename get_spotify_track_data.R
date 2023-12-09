@@ -119,10 +119,11 @@ call_by_chunks <- function(ids, FUN, n = 50, keep_id = FALSE, sleep = 0.5) {
       check_token_expiry()
       
       x <- chunks[i]
+      names(x) <- 'original.id'
       r <- FUN(x, authorization = access_token)
       
       if(keep_id) {
-        r <- bind_cols(r, list(x))
+        r <- bind_cols(x, r)
       }
       
       result <- bind_rows(result, r)
@@ -142,8 +143,13 @@ call_by_chunks <- function(ids, FUN, n = 50, keep_id = FALSE, sleep = 0.5) {
     
     close(pb)
     
+    if(exists('tmp_results')) {
+      rm('tmp_results', envir = .GlobalEnv)
+    }
+    
     return(result)
   }
+
 
 
 # Get Spotify Data ----
@@ -230,6 +236,13 @@ if(exists('album_raw')) {
 
   
 album <- album_raw %>%
+  mutate(
+    name = if_else(
+      album_type == 'album',
+      name,
+      str_c(name, ' (', album_type, ')')
+      )
+  ) %>%
   select(
     id, external_ids.upc, label, name, popularity
   ) %>%
@@ -269,10 +282,21 @@ artist <- artist_raw %>%
 
 
 ## Related Artists ----
-x <- select(artist, artist.id)
+
+# We'll limit this to artists with more than one track played as we only need
+# the top artists and this is an expensive process. 
+
+x <- unnest_longer(track, artist.id) %>%
+  group_by(artist.id) %>%
+  summarise(n = n(), .groups = 'drop') %>%
+  filter(n > 1) %>%
+  select(artist.id) %>%
+  mutate(
+    artist.id = sapply(artist.id, toString)
+  )
 
 if(exists('related_artist_raw')) {
-  x <- filter(x, !artist.id %in% related_artist_raw$'1')
+  x <- filter(x, !artist.id %in% related_artist_raw$original.id)
   
   if(nrow(x) > 0) {
     related_artist_raw <- related_artist_raw %>%
@@ -284,6 +308,16 @@ if(exists('related_artist_raw')) {
     call_by_chunks(x, get_related_artists, 1, keep_id = TRUE)
 }
 
+
+related_artist <- related_artist_raw %>%
+  select(original.id, id, name, external_urls.spotify, followers.total) %>%
+  rename(
+    artist.id = original.id,
+    related_artist_id = id,
+    related_artist_name = name,
+    related_artist_url = external_urls.spotify,
+    related_artist_followers = followers.total
+  )
 
 
 ## Users ----
@@ -305,13 +339,13 @@ save(
   file = 'data/spotify_play_history.RData')
 
 save(
-  track, track_features, album, artist, user, 
+  track, track_features, album, artist, related_artist, user, 
   file = 'data/spotify_data.RData'
 )
 
 
 save(
-  track_raw, track_features_raw, album_raw, artist_raw, related_artists_raw,
+  track_raw, track_features_raw, album_raw, artist_raw, related_artist_raw,
   user_raw, 
   file = 'data/spotify_data_raw.RData'
 )

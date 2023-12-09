@@ -11,11 +11,10 @@ if (force_refresh) source('get_spotify_track_data.R')
 load('data/spotify_play_history.RData')
 load('data/spotify_data.RData')
 
-
 # Generate datasets for the user that will be loaded and referenced in the qmd
 
 # User ----
-u <- filter(user, display_name == 'Sammy') %>% pull(id)
+u <- filter(user, display_name == 'domotron') %>% pull(id)
 
 # This will hold a filtered and transformed plays dataset used for the remaining
 # analysis. When counting the number of plays of a track, we will exclude any
@@ -23,18 +22,15 @@ u <- filter(user, display_name == 'Sammy') %>% pull(id)
 
 # We'll also convert our categorical integers into factors.
 # Key is in pitch class notation
-pcn <- data.frame(
-  key_index = seq(0, 11),
-  key_factor = 
-    ordered(c('C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'))
-)
+
+pcn <- c('C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B')
+
 
 user_plays <- plays %>%
   filter(username == u) %>%
   inner_join(track, by = 'track.id') %>%
   inner_join(album, by = 'album.id', suffix = c('_track', '_album')) %>%
   left_join(track_features, by = 'track.id') %>%
-  left_join(pcn, by = c('key' = 'key_index')) %>%
   mutate(
     track_played = duration_played / duration >= 0.1,
     
@@ -43,17 +39,45 @@ user_plays <- plays %>%
     time_signature = 
       factor(str_c(time_signature, "/4"), levels = str_c(seq(3, 7), "/4")),
     
-    key = key_factor,
+    key = factor(key, levels = seq(0, 11), labels = pcn),
     
     # Mode: 0 = minor, 1 = major
-    mode = cut(mode, breaks = 2, labels = c('minor', 'major'))
-  ) %>%
-  select(!key_factor)
+    mode = factor(mode, levels = c(0, 1), labels = c('minor', 'major'))
+  )
 
 last_date <- max(date(user_plays$ts))
 first_date <- floor_date(last_date, 'year')
 
-user_plays <- mutate(user_plays, is_current = first_date <= ts)
+# Determine if the plays are in the current year or older
+user_plays <- mutate(user_plays, is_current = first_date <= ts,)
+
+
+
+# Group the plays into sessions and provide some summary
+
+play_sessions <- user_plays %>%
+  select(ts, duration_played, track_played, is_current) %>%
+  arrange(ts) %>%
+  mutate(
+    i = interval(
+      start = ts - duration_played,
+      # Add extra time to allow for pauses between songs to still count as a
+      # single session.
+      end = ts + dminutes(5)
+    ),
+    is_session_start = coalesce(!int_overlaps(i, lag(i)), TRUE),
+    session_id = cumsum(is_session_start)
+  ) %>%
+  group_by(session_id, is_current) %>%
+  summarise(
+    session_start = min(ts - duration_played),
+    session_end = max(ts),
+    session_length = as.duration(session_end - session_start),
+    tracks_played = sum(track_played),
+    .groups = 'drop'
+  ) %>%
+  filter(tracks_played >= 1)
+
 
 
 # Summary numbers ----
@@ -102,6 +126,22 @@ play_summary['current_albums'] <-
   nrow()
 
 
+play_summary['total_sessions'] <- nrow(play_sessions)
+
+play_summary['current_sessions'] <- 
+  filter(play_sessions, is_current) %>%
+  nrow()
+
+play_summary['total_session_track_avg'] <- 
+  pull(play_sessions, tracks_played) %>%
+  median()
+
+play_summary['current_session_track_avg'] <- 
+  filter(play_sessions, is_current) %>%
+  pull(tracks_played) %>%
+  median()
+
+
 ## Total Duration (don't need to filter by played here)
 
 # We want a function that pretty prints the duration like lubridate does
@@ -122,7 +162,7 @@ pretty_seconds <- function(secs) {
     unit_index <- max(which(secs >= SECONDS_IN_ONE))
     
     result <- paste0(
-      "~", round(secs / SECONDS_IN_ONE[unit_index], 2), " ", 
+      "~", floor(secs / SECONDS_IN_ONE[unit_index]), " ", 
       names(SECONDS_IN_ONE)[unit_index], 's'
       )
   }
@@ -139,6 +179,17 @@ play_summary['current_duration'] <-
   filter(user_plays, is_current) %>% 
   select(duration_played) %>%
   sum() %>%
+  pretty_seconds()
+
+play_summary['total_session_duration_avg'] <- 
+  pull(play_sessions, session_length) %>%
+  median() %>%
+  pretty_seconds()
+
+play_summary['current_session_duration_avg'] <- 
+  filter(play_sessions, is_current) %>%
+  pull(session_length) %>%
+  median() %>%
   pretty_seconds()
 
 
@@ -236,7 +287,7 @@ top_tracks <-
     old_rank = min_rank(desc(old_plays)),
     current_rank = min_rank(desc(current_plays)),
     rank_diff = if_else(old_plays > 0, old_rank - current_rank, NA),
-    track_url = paste0('http://open.spotify.com/track/', track.id),
+    track_url = paste0('https://open.spotify.com/track/', track.id),
     ) %>%
   arrange(current_rank) %>%
   select(
@@ -265,7 +316,7 @@ top_artists <-
     old_rank = min_rank(desc(old_plays)),
     current_rank = min_rank(desc(current_plays)),
     rank_diff = if_else(old_plays > 0, old_rank - current_rank, NA),
-    artist_url = paste0('http://open.spotify.com/artist/', artist.id),
+    artist_url = paste0('https://open.spotify.com/artist/', artist.id),
     ) %>%
   arrange(current_rank) %>%
   select(
@@ -301,7 +352,7 @@ top_albums <-
     old_rank = min_rank(desc(old_plays)),
     current_rank = min_rank(desc(current_plays)),
     rank_diff = if_else(old_plays > 0, old_rank - current_rank, NA),
-    album_url = paste0('http://open.spotify.com/album/', album.id),
+    album_url = paste0('https://open.spotify.com/album/', album.id),
     release_year = year(album.release_date)
     ) %>%
   arrange(current_rank) %>%
@@ -312,46 +363,28 @@ top_albums <-
   )
 
 
-
-
-
-
-
 ## Genres ----
 
 # Genres are associated with an artist, rather than a song or an album, so start
 # with the top artist list and aggregate the existing summary numbers. 
 
-top_genres <- 
-  top_artists %>%
-  select(artist.id, first_listen, distinct_tracks, current_plays, all_plays) %>%
+genre_list <- top_artists %>%
+  select(artist.id, distinct_tracks, current_plays) %>%
   inner_join(artist, by = 'artist.id') %>%
-  select(artist_name, genres, first_listen:all_plays) %>%
   unnest_longer(genres) %>%
   group_by(genres) %>%
   summarise(
-    all_plays = sum(all_plays),
     current_plays = sum(current_plays),
-    old_plays = all_plays - current_plays,
-    first_listen = min(first_listen),
     distinct_artists = n_distinct(artist_name),
     .groups = 'drop'
   ) %>%
   # This genre filter is because I disagree with the associations in my personal 
   # listening history, and I have the power to make it disappear.
-  filter(all_plays >= 5, genres != 'nu metal') %>%
+  filter(distinct_artists >= 3, current_plays >= 5, genres != 'nu metal') %>%
+  select(genres) %>%
   mutate(
-    old_rank = min_rank(desc(old_plays)),
-    current_rank = min_rank(desc(current_plays)),
-    rank_diff = if_else(old_plays > 0, old_rank - current_rank, NA)
-  ) %>%
-  arrange(current_rank) %>%
-  select(
-    current_rank, rank_diff, genres, first_listen, distinct_artists, 
-    current_plays, all_plays
+    clean_genre = str_squish(str_replace_all(genres, '[\\s\\-]', ' '))
   )
-
-
 
 
 
@@ -360,52 +393,11 @@ top_genres <-
 # Assume that a broader genre will be a shorter string contained within a broad
 # genre - e.g. rock -> alternative rock -> soft alternative rock. 
 
-
-# Genre Seeds - no spotifyr for this...
-genre_seed <- data.frame(genres = c(
-  'acoustic', 'afrobeat', 'alt-rock', 'alternative', 'ambient', 'anime', 
-  'black-metal', 'bluegrass', 'blues', 'bossanova', 'brazil', 'breakbeat', 
-  'british', 'cantopop', 'chicago-house', 'children', 'chill', 'classical', 
-  'club', 'comedy', 'country', 'dance', 'dancehall', 'death-metal', 
-  'deep-house', 'detroit-techno', 'disco', 'disney', 'drum-and-bass', 
-  'dub', 'dubstep', 'edm', 'electro', 'electronic', 'emo', 'folk', 'forro', 
-  'french', 'funk', 'garage', 'german', 'gospel', 'goth', 'grindcore', 'groove', 
-  'grunge', 'guitar', 'happy', 'hard-rock', 'hardcore', 'hardstyle', 
-  'heavy-metal', 'hip-hop', 'holidays', 'honky-tonk', 'house', 'idm', 
-  'indian', 'indie', 'indie-pop', 'industrial', 'iranian', 'j-dance', 
-  'j-idol', 'j-pop', 'j-rock', 'jazz', 'k-pop', 'kids', 'latin', 'latino', 
-  'malay', 'mandopop', 'metal', 'metal-misc', 'metalcore', 'minimal-techno', 
-  'movies', 'mpb', 'new-age', 'new-release', 'opera', 'pagode', 'party', 
-  'philippines-opm', 'piano', 'pop', 'pop-film', 'post-dubstep', 'power-pop', 
-  'progressive-house', 'psych-rock', 'punk', 'punk-rock', 'r-n-b', 'rainy-day', 
-  'reggae', 'reggaeton', 'road-trip', 'rock', 'rock-n-roll', 'rockabilly', 
-  'romance', 'sad', 'salsa', 'samba', 'sertanejo', 'show-tunes', 
-  'singer-songwriter', 'ska', 'sleep', 'songwriter', 'soul', 'soundtracks', 
-  'spanish', 'study', 'summer', 'swedish', 'synth-pop', 'tango', 'techno', 
-  'trance', 'trip-hop', 'turkish', 'work-out', 'world-music',
-  
-  # Some additional root level ones that make sense to someone who doesn't know
-  # much about the genres.
-  'bass'
-  
-))
-
-# Filter the list of genres we want to work with to only those with at least
-# 3 distinct artists and 5 current plays
-
-
-genre_list <- top_genres %>%
-  filter(distinct_artists >= 3, current_plays >= 5) %>%
-  select(genres) %>%
-  mutate(
-    clean_genre = str_squish(str_replace_all(genres, '[\\s\\-]', ' '))
-  )
-
-
 # There are some nodes we don't want to treat as atomic, remove them so they
 # get bundled with the next node - e.g. no such thing as "hop" in "hip hop"
 
-stop_nodes <- c('fi', 'hop', 'revival', 'music', 'cover', 'trip', 'nova', 'bass')
+stop_nodes <-
+  c('fi', 'hop', 'revival', 'music', 'cover', 'trip', 'nova', 'bass')
 
 
 genre_paths <- genre_list %>%
@@ -489,9 +481,16 @@ genre_map <- genre_paths %>%
 
 
 
+## Track audio features ----
+
+user_track_features <- user_plays %>%
+  filter(is_current, track_played) %>%
+  mutate(month_played = month(ts, label = TRUE)) %>%
+  select(track.id, valence, danceability, energy, month_played)
+
 
 save(
-  top_tracks, top_artists, top_albums, top_genres, genre_map,
+  top_tracks, top_artists, top_albums, genre_map, user_track_features,
   file = 'data/top_things.RData'
 )
 
@@ -499,40 +498,16 @@ save(
 
 # Colours ----
 # Temporarily adding here while playing with plots
-# bg_col <- '#060606'
-# faint_col <- '#161b22'
-# 
-# txt_col <- '#e6edf3'
-# txt_light_col <- '#adafae'
-# 
-# spotify_green <- '#1DB954'
+bg_col <- '#060606'
+faint_col <- '#161b22'
+
+txt_col <- '#e6edf3'
+txt_light_col <- '#adafae'
+
+spotify_green <- '#1DB954'
 
 
 
-
-
-
-             
-
-## Track audio features ----
-
-
-# Loudness is the average dB across the track in a typical range from -60 to 0
-# so is best used to compare relatively and the actual value is less important.
-# user_plays %>%
-#   distinct(track.id, loudness) %>%
-#   ggplot(aes(x = loudness)) +
-#   geom_density()
-# 
-# # Tempo is BPM
-# user_plays %>%
-#   distinct(track.id, tempo) %>%
-#   ggplot(aes(x = tempo)) +
-#   geom_density()
-
-
-# Time signature is an estimate of the meter / 4, values range from 3-7 but this
-# is categorical.
 
 
 # Key is in pitch class notation, -1 indicates not detected.
@@ -543,25 +518,30 @@ save(
 
 
 
-# Acousticness is a confidence measure of whether the track is acoustic
-
-
-# Danceability is continuous from 0 (not danceable) to 1 (very danceable)
-
-
-# Energy is continuous from 0 (not energetic) to 1 (very energetic)
-
-
-# Speechiness is a confidence measure if the track is spoken word, with 3
-# categories. 0-0.33 no spoken word, 0.33-0.66 a mixture, >0.66 spoken word.
 
 
 
-# Instrumentalness is a confidence measure of whether there are vocals (0.5+)
+
+# Suggested Artists ---
+aa <- related_artist %>%
+  filter(!related_artist_id %in% top_artists$artist.id) %>%
+  inner_join(top_artists, by = 'artist.id') %>%
+  filter(current_rank <= 100)
 
 
-# Liveness is a confidence measure of whether there is an audience (0.8+)
+ab <- aa %>%
+  #select(related_artist_name, artist_name, distinct_tracks, current_plays) %>%
+  group_by(related_artist_name) %>%
+  mutate(
+    related_plays = sum(all_plays),
+    related_tracks = sum(distinct_tracks),
+    n_artists = n(),
+    score = sum(all_plays) * log10(followers)
+    
+  ) %>%
+  filter(n_artists >= 3) %>%
+  arrange(desc(score))
 
 
-# Valence s continuous from 0 (negative emotion) to 1 (positive emotion)
+
 
