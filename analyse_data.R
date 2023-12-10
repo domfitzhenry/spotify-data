@@ -14,7 +14,9 @@ load('data/spotify_data.RData')
 # Generate datasets for the user that will be loaded and referenced in the qmd
 
 # User ----
-u <- filter(user, display_name == 'domotron') %>% pull(id)
+u <- head(user, n = 1) %>% pull(id)
+
+username <- filter(user, id == u) %>% pull(display_name)
 
 # This will hold a filtered and transformed plays dataset used for the remaining
 # analysis. When counting the number of plays of a track, we will exclude any
@@ -85,56 +87,68 @@ play_sessions <- user_plays %>%
 play_summary <- list()
 
 play_summary['total_streams'] <- 
-  filter(user_plays, track_played) %>% nrow()
+  filter(user_plays, track_played) %>% 
+  nrow() %>%
+  format(big.mark = ',')
 
 play_summary['current_streams'] <- 
-  filter(user_plays, track_played, is_current) %>% nrow()
+  filter(user_plays, track_played, is_current) %>% 
+  nrow() %>%
+  format(big.mark = ',')
 
 
 play_summary['total_tracks'] <- 
   filter(user_plays, track_played) %>% 
-  distinct(track.id) %>%
-  nrow()
+  distinct(external_ids.isrc) %>%
+  nrow() %>%
+  format(big.mark = ',')
 
 play_summary['current_tracks'] <- 
   filter(user_plays, track_played, is_current) %>% 
-  distinct(track.id) %>%
-  nrow()
+  distinct(external_ids.isrc) %>%
+  nrow() %>%
+  format(big.mark = ',')
 
 
 play_summary['total_artists'] <- 
   filter(user_plays, track_played) %>% 
   unnest_longer(artist.id) %>%
   distinct(artist.id) %>%
-  nrow()
+  nrow() %>%
+  format(big.mark = ',')
 
 play_summary['current_artists'] <- 
   filter(user_plays, track_played, is_current) %>% 
   unnest_longer(artist.id) %>%
   distinct(artist.id) %>%
-  nrow()
+  nrow() %>%
+  format(big.mark = ',')
 
 
 play_summary['total_albums'] <- 
   filter(user_plays, track_played) %>% 
   distinct(album.id) %>%
-  nrow()
+  nrow() %>%
+  format(big.mark = ',')
 
 play_summary['current_albums'] <- 
   filter(user_plays, track_played, is_current) %>% 
   distinct(album.id) %>%
-  nrow()
+  nrow() %>%
+  format(big.mark = ',')
 
 
-play_summary['total_sessions'] <- nrow(play_sessions)
+play_summary['total_sessions'] <- 
+  nrow(play_sessions) %>%
+  format(big.mark = ',')
 
 play_summary['current_sessions'] <- 
   filter(play_sessions, is_current) %>%
-  nrow()
+  nrow() %>%
+  format(big.mark = ',')
 
 play_summary['total_session_track_avg'] <- 
-  pull(play_sessions, tracks_played) %>%
-  median()
+  median(play_sessions$tracks_played)
 
 play_summary['current_session_track_avg'] <- 
   filter(play_sessions, is_current) %>%
@@ -142,58 +156,37 @@ play_summary['current_session_track_avg'] <-
   median()
 
 
-## Total Duration (don't need to filter by played here)
+## Total Duration (don't need to format or filter by played)
 
-# We want a function that pretty prints the duration like lubridate does
-pretty_seconds <- function(secs) {
-  
-  result <- paste(secs, 'seconds')
-  
-  SECONDS_IN_ONE <- c(
-    second = 1,
-    minute = 60,
-    hour   = 3600,
-    day    = 86400,
-    #week   = 604800,
-    year   = 31557600
-  )
-  
-  if (secs >= SECONDS_IN_ONE[1]) {
-    unit_index <- max(which(secs >= SECONDS_IN_ONE))
-    
-    result <- paste0(
-      "~", floor(secs / SECONDS_IN_ONE[unit_index]), " ", 
-      names(SECONDS_IN_ONE)[unit_index], 's'
-      )
-  }
-  
-  return(result)
-}
-
-
-play_summary['total_duration'] <- 
-  sum(user_plays$duration_played) %>%
-  pretty_seconds()
+play_summary['total_duration'] <- sum(user_plays$duration_played)
 
 play_summary['current_duration'] <- 
   filter(user_plays, is_current) %>% 
-  select(duration_played) %>%
-  sum() %>%
-  pretty_seconds()
+  pull(duration_played) %>%
+  sum()
 
 play_summary['total_session_duration_avg'] <- 
-  pull(play_sessions, session_length) %>%
-  median() %>%
-  pretty_seconds()
+  median(play_sessions$session_length)
 
 play_summary['current_session_duration_avg'] <- 
   filter(play_sessions, is_current) %>%
   pull(session_length) %>%
-  median() %>%
-  pretty_seconds()
+  median()
 
 
-# Date transforms ----
+session_max <- filter(play_sessions, is_current) %>%
+  slice_max(order_by = session_length)
+
+play_summary['current_session_max_date'] <- 
+  format(session_max$session_start, format = '%d %B at %I:%M %p')
+
+play_summary['current_session_max_tracks'] <- session_max$tracks_played
+
+play_summary['current_session_max_duration'] <- session_max$session_length
+
+
+
+-# Date transforms ----
 
 date_df <- 
   data.frame(
@@ -246,7 +239,7 @@ plays_by_hour <-
 
 # Save data to be loaded to qmd for viz
 save(
-  last_date, first_date, play_summary, plays_by_date, plays_by_hour,
+  last_date, first_date, play_summary, plays_by_date, plays_by_hour, username,
   file = 'data/summary_date_data.RData'
 )
 
@@ -257,7 +250,7 @@ save(
 
 ## Ordered Tables ----
 
-### Tracks
+### Tracks ----
 
 # The same track might appear on multiple albums, in which case it will have
 # different spotify track ids - the ISRC is the unique identifier for a track.
@@ -296,7 +289,7 @@ top_tracks <-
   )
 
 
-### Artists
+### Artists ----
 top_artists <- 
   filter(user_plays, track_played) %>%
   # We'll credit the song only to the first listed artist, as it might cause
@@ -326,7 +319,7 @@ top_artists <-
   )
 
 
-### Albums
+### Albums ----
 top_albums <- 
   filter(user_plays, track_played) %>%
   mutate(
@@ -369,18 +362,18 @@ top_albums <-
 # with the top artist list and aggregate the existing summary numbers. 
 
 genre_list <- top_artists %>%
-  select(artist.id, distinct_tracks, current_plays) %>%
+  slice_max(order_by = current_plays(desc), n = 200) %>%
+  select(artist.id, distinct_tracks) %>%
   inner_join(artist, by = 'artist.id') %>%
   unnest_longer(genres) %>%
   group_by(genres) %>%
   summarise(
-    current_plays = sum(current_plays),
     distinct_artists = n_distinct(artist_name),
     .groups = 'drop'
   ) %>%
   # This genre filter is because I disagree with the associations in my personal 
   # listening history, and I have the power to make it disappear.
-  filter(distinct_artists >= 3, current_plays >= 5, genres != 'nu metal') %>%
+  filter(distinct_artists >= 3, genres != 'nu metal') %>%
   select(genres) %>%
   mutate(
     clean_genre = str_squish(str_replace_all(genres, '[\\s\\-]', ' '))
@@ -397,7 +390,7 @@ genre_list <- top_artists %>%
 # get bundled with the next node - e.g. no such thing as "hop" in "hip hop"
 
 stop_nodes <-
-  c('fi', 'hop', 'revival', 'music', 'cover', 'trip', 'nova', 'bass')
+  c('fi', 'hop', 'revival', 'music', 'cover', 'trip', 'nova', 'bass', 'roll')
 
 
 genre_paths <- genre_list %>%
@@ -489,10 +482,32 @@ user_track_features <- user_plays %>%
   select(track.id, valence, danceability, energy, month_played)
 
 
+## Suggested Artists ----
+suggested_artists <- related_artist %>%
+  filter(!related_artist_id %in% top_artists$artist.id) %>%
+  inner_join(top_artists, by = 'artist.id') %>%
+  filter(current_rank <= 100) %>%
+  group_by(related_artist_name, related_artist_url) %>%
+  summarise(
+    n_artists = n(),
+    score = median(all_plays) * max(log10(related_artist_followers)),
+    related = paste(str_flatten_comma(artist_name)),
+    .groups = 'drop'
+  ) %>%
+  filter(n_artists >= 3) %>%
+  slice_max(order_by = score, n = 10L) %>%
+  select(related_artist_name, related_artist_url, related)
+
+
+
 save(
   top_tracks, top_artists, top_albums, genre_map, user_track_features,
+  suggested_artists,
   file = 'data/top_things.RData'
 )
+
+
+
 
 
 
@@ -523,24 +538,7 @@ spotify_green <- '#1DB954'
 
 
 # Suggested Artists ---
-aa <- related_artist %>%
-  filter(!related_artist_id %in% top_artists$artist.id) %>%
-  inner_join(top_artists, by = 'artist.id') %>%
-  filter(current_rank <= 100)
 
-
-ab <- aa %>%
-  #select(related_artist_name, artist_name, distinct_tracks, current_plays) %>%
-  group_by(related_artist_name) %>%
-  mutate(
-    related_plays = sum(all_plays),
-    related_tracks = sum(distinct_tracks),
-    n_artists = n(),
-    score = sum(all_plays) * log10(followers)
-    
-  ) %>%
-  filter(n_artists >= 3) %>%
-  arrange(desc(score))
 
 
 
