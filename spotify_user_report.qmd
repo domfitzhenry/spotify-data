@@ -67,6 +67,7 @@ pretty_seconds <- function(secs, unit_name = 'undefined') {
 
 # Reactable Utilities ----
 
+# Function for displaying the trend indicators on top tracks, artists etc.
 trend_indicator <- function(value = 0) {
   args <- list(role = 'img', title = value)
   
@@ -83,6 +84,84 @@ trend_indicator <- function(value = 0) {
   
   do.call(span, args)
 }
+
+
+# Function that takes a measure as a parameter, and returns a reactable table
+# formatted with the lowest n values on the left and the highest n values on
+# the right
+build_measure_table <- function(measure, n_val = 5L){
+  
+  m0 <- top_track_features %>%
+    slice_min(order_by = .data[[measure]], with_ties = FALSE, n = n_val) %>%
+    select(all_of(measure), artist_track, track_url) %>%
+    rename(
+      low = artist_track,
+      low_url = track_url,
+      low_measure = all_of(measure)
+      )
+  
+  m1 <- top_track_features %>%
+    slice_max(order_by = .data[[measure]], with_ties = FALSE, n = n_val) %>%
+    select(artist_track, all_of(measure), track_url) %>%
+    rename(
+      high = artist_track,
+      high_url = track_url,
+      high_measure = all_of(measure)
+    )
+  
+  m <- bind_cols(m0, m1)
+  
+  m %>%
+    reactable(
+      wrap = FALSE,
+      paginationType = 'simple',
+      minRows = 5,
+      columns = list(
+        low_measure = colDef(
+          name = '',
+          align = 'left',
+          width = 70,
+          class = 'number'
+        ),
+        low = colDef(
+          name = paste('Low', measure),
+          resizable = TRUE,
+          cell = function(value, index) {
+            tags$a(
+              href = m[index, 'low_url'],
+              target = "_blank", value
+            )
+          },
+          minWidth = 200
+        ),
+        low_url = colDef(show = FALSE),
+        
+        high = colDef(
+          name = paste('High', measure),
+          align = 'right',
+          resizable = TRUE,
+          cell = function(value, index) {
+            tags$a(
+              href = m[index, 'high_url'],
+              target = "_blank", value
+            )
+          },
+          minWidth = 200
+        ),
+        high_measure = colDef(
+          name = '',
+          width = 70,
+          format = colFormat(separators = TRUE),
+          class = 'number'
+        ),
+        high_url = colDef(show = FALSE)
+        
+      )
+    ) %>%
+    return()
+
+}
+
 
 
 # Default reactable theme
@@ -159,18 +238,19 @@ options(
 # `r username`
 
 [`r pretty_seconds(current_duration, 'minute')`]{style="font-size: 60pt"}\
-of music listened to in the last year, which is cumulatively over `r pretty_seconds(current_duration, 'day')`!
+of music listened to in the last year, which is cumulatively over 
+`r pretty_seconds(current_duration, 'day')`!
 
 [`r current_streams`]{style="font-size: 50pt"}\
 **streams** of
 
-[`r current_tracks`]{style="font-size: 40pt"}\
+[`r current_tracks`]{style="font-size: 50pt"}\
 **tracks** appearing on
 
-[`r current_albums`]{style="font-size: 30pt"}\
+[`r current_albums`]{style="font-size: 50pt"}\
 **albums** performed by
 
-[`r current_artists`]{style="font-size: 20pt"}\
+[`r current_artists`]{style="font-size: 50pt"}\
 **artists**.
 
 Over the lifetime of your Spotify account, this has been a total of:
@@ -264,9 +344,15 @@ plays_by_date %>%
 ::: {layout="[60, -5, 30, -5]"}
 ##### Listening Sessions
 
--   Of the `r current_sessions` times you decided to listen to music on Spotify last year, you listened to an average (median) `r current_session_track_avg` tracks for `r pretty_seconds(current_session_duration_avg)`.
--   Your longest session started on `r current_session_max_date`, when you listened to `r current_session_max_tracks` tracks for over `r pretty_seconds(current_session_max_duration)`.
--   Over all time, you've had `r total_sessions` listening sessions averaging `r total_session_track_avg` tracks for around `r pretty_seconds(total_session_duration_avg)` per session.
+-   Of the `r current_sessions` times you decided to listen to music on Spotify 
+last year, you listened to an average (median) `r current_session_track_avg` 
+tracks for `r pretty_seconds(current_session_duration_avg)`.
+-   Your longest session started on `r current_session_max_date`, when you 
+listened to `r current_session_max_tracks` tracks for over 
+`r pretty_seconds(current_session_max_duration)`.
+-   Over all time, you've had `r total_sessions` listening sessions averaging 
+`r total_session_track_avg` tracks for around 
+`r pretty_seconds(total_session_duration_avg)` per session.
 
 ```{r}
 #| label: clock24
@@ -308,7 +394,10 @@ plays_by_hour %>%
 
 ## Artists
 
-A list of all artists that you have streamed at least 5 times in the lifetime of your account. Blue circles indicate new entries in the last year, while an arrow indicates how the ranking has changed since the year before - hover for a tooltip showing the change.
+A list of all artists that you have streamed at least 5 times in the lifetime 
+of your account. Blue circles indicate new entries in the last year, while an 
+arrow indicates how the ranking has changed since the year before - hover for 
+a tooltip showing the change.
 
 ```{r}
 #| label: top-artists-table
@@ -393,7 +482,9 @@ reactable(
 
 ### Popularity
 
-The popularity of your top 10 artists and the 5 artists with the most followers. Bubble size represents the number of followers while the axes show how popular the artist is with you versus the world.
+The popularity of your top 10 artists and a couple of artists with the most 
+followers. Bubble size represents the number of followers while the axes show 
+how popular the artist is with you versus the world.
 
 ```{r}
 #| label: artist-popularity-bubble
@@ -408,7 +499,7 @@ The popularity of your top 10 artists and the 5 artists with the most followers.
 
 artist_annotation <- union(
   slice_max(top_artists, order_by = current_plays, n = 10),
-  slice_max(top_artists, order_by = tibble(followers, artist_popularity), n = 5)
+  slice_max(top_artists, order_by = tibble(followers, artist_popularity), n = 2)
   ) %>%
   mutate(
     you_popularity = current_plays * log10(distinct_tracks) + (all_plays / 100)
@@ -518,13 +609,60 @@ plot_ly(
 
 ```
 
-#[Something about related artists]{.text-warning}
+### Related Artists
 
-Put here
+Based on your top artists over the last year, here are some suggestions that 
+you might not have heard yet (at least not on this account).
+
+```{r}
+#| label: related-artists-table
+#| layout: [[-100, 550, -100]]
+
+reactable(
+  suggested_artists,
+  highlight = TRUE,
+  sortable = FALSE,
+  wrap = TRUE,
+  minRows = 10,
+  width = 750,
+  columns = list(
+    related_artist_name = colDef(
+      name = 'Artist',
+      resizable = TRUE,
+      cell = function(value, index) {
+        tags$a(
+          href = pull(suggested_artists[index, 'related_artist_url']), 
+          target = "_blank", value
+          )
+      },
+      minWidth = 100
+    ),
+    
+    related_artist_url = colDef(show = FALSE),
+    
+    related = colDef(
+      name = 'Related Artists',
+      resizable = TRUE,
+      minWidth = 200
+    )
+  ),
+  language = reactableLang(
+    searchPlaceholder = "Filter artists",
+    noData = "No artists found",
+    pageInfo = "{rowStart}\u2013{rowEnd} of {rows} artists",
+    pagePrevious = "\u276e",
+    pageNext = "\u276f",
+  )
+)
+
+```
 
 ## Albums
 
-A list of all albums that you have streamed at least 5 times in the lifetime of your account. Blue circles indicate new entries in the last year, while an arrow indicates how the ranking has changed since the year before - hover for a tooltip showing the change.
+A list of all albums that you have streamed at least 5 times in the lifetime of 
+your account. Blue circles indicate new entries in the last year, while an 
+arrow indicates how the ranking has changed since the year before - hover for a 
+tooltip showing the change.
 
 ```{r}
 #| label: top-albums-table
@@ -609,7 +747,8 @@ reactable(
 
 ##### Release Years
 
-The number of distinct albums by release year with at least one track played in the last year. The intensity of the green indicates the number of plays.
+The number of distinct albums by release year with at least one track played in 
+the last year. The intensity of the green indicates the number of plays.
 
 ```{r}
 #| label: album-release-bars
@@ -743,10 +882,30 @@ reactable(
 
 ```
 
-### Track Features
+### Audio Features
+
+Spotify derives a series of measures based on an audio analysis of the track. 
+These are presented below as a series of ridgeline charts broken down by month. 
+The descriptions of the measures are lifted almost verbatim from the 
+[Web API](https://developer.spotify.com/documentation/web-api/reference/get-audio-features)
+reference.
+
+>Fun fact - for a brief period in 2017 ridgeline plots were called "joyplots" 
+>in reference to the cover of Joy Divisions 1979 album 
+>[Unknown Pleasures](https://open.spotify.com/album/5Dgqy4bBg09Rdw7CQM545s). 
+>It was short-lived, as the origins of the bands name were a little dark to be 
+>throwing around lightly.
+
+##### Danceability
+
+Danceability describes how suitable a track is for dancing based on a 
+combination of musical elements including tempo, rhythm stability, beat 
+strength, and overall regularity.
+
+`r build_measure_table('danceability')`
 
 ```{r}
-#| label: track-features
+#| label: track-features-danceability
 #| fig-width: 13.5
 #| fig-height: 5
 #| fig-format: svg
@@ -757,7 +916,6 @@ user_track_features %>%
   geom_density_ridges(colour = faint_col, fill = spotify_green, na.rm = TRUE) +
   scale_x_continuous(breaks = c(0, 1), labels = c('Low', 'High')) +
   theme_ridges(grid = FALSE, font_size = 10) +
-  labs(title = 'Danceability') +
   theme(
     axis.text = element_text(colour = txt_light_col),
     axis.title = element_blank(),
@@ -765,14 +923,30 @@ user_track_features %>%
     panel.background = element_rect(colour = bg_col, fill = bg_col),
     plot.title = element_text(colour = txt_col, hjust = 0.5, size = 14)
   )
+```
 
+##### Energy
+
+Energy represents a perceptual measure of intensity and activity. Typically, 
+energetic tracks feel fast, loud, and noisy. For example, death metal has high 
+energy, while a Bach prelude scores low on the scale. Perceptual features 
+contributing to this attribute include dynamic range, perceived loudness, 
+timbre, onset rate, and general entropy.
+
+`r build_measure_table('energy')`
+
+```{r}
+#| label: track-features-energy
+#| fig-width: 13.5
+#| fig-height: 5
+#| fig-format: svg
+#| message: false
 
 user_track_features %>%
   ggplot(aes(x = energy, y = month_played, group = month_played)) +
   geom_density_ridges(colour = faint_col, fill = spotify_green, na.rm = TRUE) +
   scale_x_continuous(breaks = c(0, 1), labels = c('Low', 'High')) +
   theme_ridges(grid = FALSE, font_size = 10) +
-  labs(title = 'Energy') +
   theme(
     axis.text = element_text(colour = txt_light_col),
     axis.title = element_blank(),
@@ -780,8 +954,22 @@ user_track_features %>%
     panel.background = element_rect(colour = bg_col, fill = bg_col),
     plot.title = element_text(colour = txt_col, hjust = 0.5, size = 14)
   )
+```
 
+##### Valence
 
+Valence represents the musical positiveness conveyed by a track. Tracks with 
+high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks 
+with low valence sound more negative (e.g. sad, depressed, angry).
+
+`r build_measure_table('valence')`
+
+```{r}
+#| label: track-features-valence
+#| fig-width: 13.5
+#| fig-height: 5
+#| fig-format: svg
+#| message: false
 
 # Valence is continuous from 0 (negative emotion) to 1 (positive emotion)
 user_track_features %>%
@@ -789,7 +977,6 @@ user_track_features %>%
   geom_density_ridges(colour = faint_col, fill = spotify_green, na.rm = TRUE) +
   scale_x_continuous(breaks = c(0, 1), labels = c('Low', 'High')) +
   theme_ridges(grid = FALSE, font_size = 10) +
-  labs(title = 'Valence') +
   theme(
     axis.text = element_text(colour = txt_light_col),
     axis.title = element_blank(),
@@ -800,5 +987,3 @@ user_track_features %>%
 
 
 ```
-
-

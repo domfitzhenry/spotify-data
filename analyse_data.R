@@ -175,7 +175,7 @@ play_summary['current_session_duration_avg'] <-
 
 
 session_max <- filter(play_sessions, is_current) %>%
-  slice_max(order_by = session_length)
+  slice_max(order_by = session_length, with_ties = FALSE)
 
 play_summary['current_session_max_date'] <- 
   format(session_max$session_start, format = '%d %B at %I:%M %p')
@@ -186,7 +186,7 @@ play_summary['current_session_max_duration'] <- session_max$session_length
 
 
 
--# Date transforms ----
+# Date transforms ----
 
 date_df <- 
   data.frame(
@@ -362,7 +362,7 @@ top_albums <-
 # with the top artist list and aggregate the existing summary numbers. 
 
 genre_list <- top_artists %>%
-  slice_max(order_by = current_plays(desc), n = 200) %>%
+  slice_max(order_by = current_plays, n = 200) %>%
   select(artist.id, distinct_tracks) %>%
   inner_join(artist, by = 'artist.id') %>%
   unnest_longer(genres) %>%
@@ -482,6 +482,17 @@ user_track_features <- user_plays %>%
   select(track.id, valence, danceability, energy, month_played)
 
 
+# Songs to select from for the highest and lowest measure songs
+top_track_features <- track_features %>%
+  inner_join(top_tracks, by = 'track.id') %>%
+  filter(current_plays > 0) %>%
+  mutate(
+    artist_track = paste(artist_names, '-', track_name),
+    hyperlink = track_url
+    )
+  
+
+
 ## Suggested Artists ----
 suggested_artists <- related_artist %>%
   filter(!related_artist_id %in% top_artists$artist.id) %>%
@@ -502,7 +513,7 @@ suggested_artists <- related_artist %>%
 
 save(
   top_tracks, top_artists, top_albums, genre_map, user_track_features,
-  suggested_artists,
+  top_track_features, suggested_artists,
   file = 'data/top_things.RData'
 )
 
@@ -530,16 +541,5 @@ spotify_green <- '#1DB954'
 
 
 # Mode: 0 = minor, 1 = major
-
-
-
-
-
-
-
-# Suggested Artists ---
-
-
-
 
 
