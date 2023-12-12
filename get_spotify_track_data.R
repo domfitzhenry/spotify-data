@@ -91,7 +91,7 @@ check_token_expiry <- function(refresh_mins = 5) {
 # chunks return a row-bound data frame. Used for batching API calls.
 
 # keep_id will save whatever id was used to call the function, which is needed
-# for related artists. The column name will be '1'.
+# for related artists. The column name will be 'original.id'.
 call_by_chunks <- function(ids, FUN, n = 50, keep_id = FALSE, sleep = 0.5) {
     
     result <- data.frame()
