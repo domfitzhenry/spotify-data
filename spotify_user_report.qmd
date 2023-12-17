@@ -23,8 +23,7 @@ library(ggrepel)
 library(ggridges)
 library(plotly)
 
-load('data/summary_date_data.RData')
-load('data/top_things.RData')
+load('data/user_data.RData')
 
 # Unpack the list for convenience
 list2env(play_summary, .GlobalEnv)
@@ -114,6 +113,7 @@ build_measure_table <- function(measure, n_val = 5L){
   m %>%
     reactable(
       wrap = FALSE,
+      sortable = FALSE,
       paginationType = 'simple',
       minRows = 5,
       columns = list(
@@ -235,11 +235,10 @@ options(
 ```
 
 ::: text-center
-# `r username`
+# `r current_user$display_name`
 
 [`r pretty_seconds(current_duration, 'minute')`]{style="font-size: 60pt"}\
-of music listened to in the last year, which is cumulatively over 
-`r pretty_seconds(current_duration, 'day')`!
+of music listened to in the last year, which is cumulatively over `r pretty_seconds(current_duration, 'day')`!
 
 [`r current_streams`]{style="font-size: 50pt"}\
 **streams** of
@@ -344,15 +343,9 @@ plays_by_date %>%
 ::: {layout="[60, -5, 30, -5]"}
 ##### Listening Sessions
 
--   Of the `r current_sessions` times you decided to listen to music on Spotify 
-last year, you listened to an average (median) `r current_session_track_avg` 
-tracks for `r pretty_seconds(current_session_duration_avg)`.
--   Your longest session started on `r current_session_max_date`, when you 
-listened to `r current_session_max_tracks` tracks for over 
-`r pretty_seconds(current_session_max_duration)`.
--   Over all time, you've had `r total_sessions` listening sessions averaging 
-`r total_session_track_avg` tracks for around 
-`r pretty_seconds(total_session_duration_avg)` per session.
+-   Of the `r current_sessions` times you decided to listen to music on Spotify last year, you listened to an average (median) `r current_session_track_avg` tracks for `r pretty_seconds(current_session_duration_avg)`.
+-   Your longest session started on `r current_session_max_date`, when you listened to `r current_session_max_tracks` tracks for over `r pretty_seconds(current_session_max_duration)`.
+-   Over all time, you've had `r total_sessions` listening sessions averaging `r total_session_track_avg` tracks for around `r pretty_seconds(total_session_duration_avg)` per session.
 
 ```{r}
 #| label: clock24
@@ -394,10 +387,7 @@ plays_by_hour %>%
 
 ## Artists
 
-A list of all artists that you have streamed at least 5 times in the lifetime 
-of your account. Blue circles indicate new entries in the last year, while an 
-arrow indicates how the ranking has changed since the year before - hover for 
-a tooltip showing the change.
+A list of all artists that you have streamed at least 5 times in the lifetime of your account. Blue circles indicate new entries in the last year, while an arrow indicates how the ranking has changed since the year before - hover for a tooltip showing the change.
 
 ```{r}
 #| label: top-artists-table
@@ -482,9 +472,7 @@ reactable(
 
 ### Popularity
 
-The popularity of your top 10 artists and a couple of artists with the most 
-followers. Bubble size represents the number of followers while the axes show 
-how popular the artist is with you versus the world.
+The popularity of your top 10 artists and a couple of artists with the most followers. Bubble size represents the number of followers while the axes show how popular the artist is with you versus the world.
 
 ```{r}
 #| label: artist-popularity-bubble
@@ -558,10 +546,7 @@ artist_annotation %>%
 
 ### Genres
 
-An interactive sunburst chart showing the genres most frequently associated 
-with your top 200 artists. Making genres into a hierarchy based solely on their 
-names doesn't work very well and the percentages are a bit dubious, but doesn't 
-it look neat when you click on it...?
+An interactive sunburst chart showing the genres most frequently associated with your top 200 artists. Making genres into a hierarchy based solely on their names doesn't work very well and the percentages are a bit dubious, but doesn't it look neat when you click on it...?
 
 ```{r}
 #| label: genre-sunburst
@@ -611,8 +596,7 @@ plot_ly(
 
 ### Related Artists
 
-Based on your top artists over the last year, here are some suggestions that 
-you might not have heard yet (at least not on this account).
+Based on your top artists over the last year, here are some suggestions that you might not have heard yet (at least not on this account).
 
 ```{r}
 #| label: related-artists-table
@@ -659,10 +643,7 @@ reactable(
 
 ## Albums
 
-A list of all albums that you have streamed at least 5 times in the lifetime of 
-your account. Blue circles indicate new entries in the last year, while an 
-arrow indicates how the ranking has changed since the year before - hover for a 
-tooltip showing the change.
+A list of all albums that you have streamed at least 5 times in the lifetime of your account. Blue circles indicate new entries in the last year, while an arrow indicates how the ranking has changed since the year before - hover for a tooltip showing the change.
 
 ```{r}
 #| label: top-albums-table
@@ -747,8 +728,7 @@ reactable(
 
 ##### Release Years
 
-The number of distinct albums by release year with at least one track played in 
-the last year. The intensity of the green indicates the number of plays.
+The number of distinct albums by release year with at least one track played in the last year. The intensity of the green indicates the number of plays.
 
 ```{r}
 #| label: album-release-bars
@@ -884,23 +864,13 @@ reactable(
 
 ### Audio Features
 
-Spotify derives a series of measures based on an audio analysis of the track. 
-These are presented below as a series of ridgeline charts broken down by month. 
-The descriptions of the measures are lifted almost verbatim from the 
-[Web API](https://developer.spotify.com/documentation/web-api/reference/get-audio-features)
-reference.
+Spotify derives a series of measures based on an audio analysis of the track. These are presented below as a series of ridgeline charts broken down by month. The descriptions of the measures are lifted almost verbatim from the [Web API](https://developer.spotify.com/documentation/web-api/reference/get-audio-features) reference.
 
->Fun fact - for a brief period in 2017 ridgeline plots were called "joyplots" 
->in reference to the cover of Joy Divisions 1979 album 
->[Unknown Pleasures](https://open.spotify.com/album/5Dgqy4bBg09Rdw7CQM545s). 
->It was short-lived, as the origins of the bands name were a little dark to be 
->throwing around lightly.
+> Fun fact - for a brief period in 2017 ridgeline plots were called "joyplots" in reference to the cover of Joy Divisions 1979 album [Unknown Pleasures](https://open.spotify.com/album/5Dgqy4bBg09Rdw7CQM545s). It was short-lived, as the origins of the bands name were a little dark to be throwing around lightly.
 
 ##### Danceability
 
-Danceability describes how suitable a track is for dancing based on a 
-combination of musical elements including tempo, rhythm stability, beat 
-strength, and overall regularity.
+Danceability describes how suitable a track is for dancing based on a combination of musical elements including tempo, rhythm stability, beat strength, and overall regularity.
 
 `r build_measure_table('danceability')`
 
@@ -927,11 +897,7 @@ user_track_features %>%
 
 ##### Energy
 
-Energy represents a perceptual measure of intensity and activity. Typically, 
-energetic tracks feel fast, loud, and noisy. For example, death metal has high 
-energy, while a Bach prelude scores low on the scale. Perceptual features 
-contributing to this attribute include dynamic range, perceived loudness, 
-timbre, onset rate, and general entropy.
+Energy represents a perceptual measure of intensity and activity. Typically, energetic tracks feel fast, loud, and noisy. For example, death metal has high energy, while a Bach prelude scores low on the scale. Perceptual features contributing to this attribute include dynamic range, perceived loudness, timbre, onset rate, and general entropy.
 
 `r build_measure_table('energy')`
 
@@ -958,9 +924,7 @@ user_track_features %>%
 
 ##### Valence
 
-Valence represents the musical positiveness conveyed by a track. Tracks with 
-high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks 
-with low valence sound more negative (e.g. sad, depressed, angry).
+Valence represents the musical positiveness conveyed by a track. Tracks with high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry).
 
 `r build_measure_table('valence')`
 
