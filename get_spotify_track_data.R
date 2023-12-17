@@ -6,11 +6,12 @@ library(keyring)
 # Data on track plays is held in JSON files, to start with we need to pull
 # all of these into a dataframe.
 
-# The list of columns that are retained from the JSON files
-retain_cols <- 
-  c('ts', 'username', 'reason_start', 'reason_end',
-    # These are transformed/renamed from the response - id and duration_ms
-    'track.id', 'duration_played')
+# The list of columns that are retained from the JSON files, noting that some
+# of these are transformed/renamed from the response - ts, id and duration_ms
+retain_cols <-c(
+  'username', 'track.id', 'track_start', 'track_end', 'reason_end', 
+  'duration_played'
+  )
 
 
 # Load Local Files ----
@@ -24,13 +25,18 @@ message('Loading Local Data.')
 current_plays <-
   list.files(
     path = 'data-raw', recursive = TRUE,
-    pattern = '.json', full.names = TRUE) %>%
+    pattern = '.json', full.names = TRUE
+    ) %>%
   map_df(~read_json(path = ., simplifyVector = TRUE)) %>%
   filter(!is.na(spotify_track_uri)) %>%
   mutate(
-    ts = with_tz(strptime(ts, '%Y-%m-%dT%H:%M:%S', tz="UTC"), Sys.timezone()),
     track.id = str_remove(spotify_track_uri, 'spotify:track:'),
-    duration_played = dmilliseconds(ms_played)
+    duration_played = dmilliseconds(ms_played),
+    track_end = with_tz(
+      strptime(ts, '%Y-%m-%dT%H:%M:%S', tz="UTC"), 
+      Sys.timezone()
+      ),
+    track_start = track_end - duration_played
   ) %>%
   select(all_of(retain_cols))
   
@@ -179,20 +185,22 @@ if(exists('track_raw')) {
 
 track <- track_raw %>%
   mutate(
-    duration = dmilliseconds(duration_ms),
-    album.release_date = 
-      parse_date_time(album.release_date, c('y', 'ym', 'ymd'))
+    duration = dmilliseconds(duration_ms)
   ) %>%
   hoist(artists, artist.id = 'id') %>%
   select(
-    id, external_ids.isrc, name, album.release_date, album.id, duration, 
-    popularity, explicit, artist.id
+    id, external_ids.isrc, name, duration, explicit, popularity, 
+    external_urls.spotify, preview_url, artist.id, album.id
   ) %>%
   rename(
     track.id = id,
+    isrc = external_ids.isrc,
     track_name = name,
-    track_popularity = popularity
+    track_popularity = popularity,
+    track_url = external_urls.spotify
   )
+
+
 
 
 ### Track Features ----
@@ -210,10 +218,27 @@ if(exists('track_features_raw')) {
   track_features_raw <- call_by_chunks(x, get_track_audio_features, 100)
 }
 
+
+# We'll also convert our categorical integers into factors.
+# Key is in pitch class notation
+
+pcn <- c('C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B')
+
+
 track_features <- track_features_raw %>%
   select(
     id, loudness, tempo, time_signature, key, mode, acousticness, 
     danceability, energy, speechiness, instrumentalness, liveness, valence
+  ) %>%
+  mutate(
+    key = factor(key, levels = seq(0, 11), labels = pcn),
+    
+    # An estimate of the meter / 4, values should range from 3-7.
+    time_signature = 
+      factor(str_c(time_signature, "/4"), levels = str_c(seq(3, 7), "/4")),
+    
+    # Mode: 0 = minor, 1 = major
+    mode = factor(mode, levels = c(0, 1), labels = c('minor', 'major'))
   ) %>%
   rename(track.id = id)
 
@@ -237,19 +262,21 @@ if(exists('album_raw')) {
   
 album <- album_raw %>%
   mutate(
-    name = if_else(
-      album_type == 'album',
-      name,
-      str_c(name, ' (', album_type, ')')
-      )
+    release_date = parse_date_time(release_date, c('y', 'ym', 'ymd'))
   ) %>%
+  # Grab the first image url if it exists this throws an error without remove?!
+  hoist(images, album_image_url = list('url', 1L), .remove = FALSE) %>%
+  hoist(artists, artist_names = 'name', .transform = str_flatten_comma) %>%
   select(
-    id, external_ids.upc, label, name, popularity
+    id, external_ids.upc, name, label, artist_names, popularity, release_date, 
+    total_tracks, album_type, external_urls.spotify, album_image_url
   ) %>%
   rename(
     album.id = id,
+    upc = external_ids.upc,
     album_name = name,
-    album_popularity = popularity
+    album_popularity = popularity,
+    album_url = external_urls.spotify
   )
 
 
@@ -271,12 +298,17 @@ if(exists('artist_raw')) {
 }
 
 artist <- artist_raw %>%
-  select(id, name, popularity, followers.total, genres) %>%
+  hoist(images, artist_image_url = list('url', 1L), .remove = FALSE) %>%
+  select(
+    id, name, popularity, followers.total, genres, external_urls.spotify, 
+    artist_image_url
+    ) %>%
   rename(
     artist.id = id,
     artist_name = name,
     artist_popularity = popularity,
-    followers = followers.total
+    followers = followers.total,
+    artist_url = external_urls.spotify
   )
 
 
@@ -325,18 +357,22 @@ user_raw <-
   distinct(plays, username) %>%
   call_by_chunks(get_user_profile,  1)
 
+
+# Unsure how this works, # 2 seems bigger so take that?
+# Revisit at some point
 user <- user_raw %>%
-  select(id, display_name, any_of('images.url1'))
+  select(id, display_name, any_of('images.url2'))
 
 
-message('Data Loaded.')
+message('\nSaving Data.')
 
 
 # Save output and cleanup ----
 
 save(
   plays, 
-  file = 'data/spotify_play_history.RData')
+  file = 'data/spotify_play_history.RData'
+)
 
 save(
   track, track_features, album, artist, related_artist, user, 
@@ -350,4 +386,11 @@ save(
   file = 'data/spotify_data_raw.RData'
 )
 
-remove(list = ls())
+remove(
+  track_raw, track_features_raw, album_raw, artist_raw, related_artist_raw, 
+  user_raw, x, access_token, token_expires, pcn, retain_cols, call_by_chunks,
+  check_key, check_token_expiry
+)
+
+
+message('Data Loaded.')
