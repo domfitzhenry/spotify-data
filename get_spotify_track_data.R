@@ -361,7 +361,8 @@ user_raw <-
 # Unsure how this works, # 2 seems bigger so take that?
 # Revisit at some point
 user <- user_raw %>%
-  select(id, display_name, any_of('images.url2'))
+  rename(user_image = images.url2) %>%
+  select(id, display_name, user_image)
 
 
 message('\nSaving Data.')

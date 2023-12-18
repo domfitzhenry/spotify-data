@@ -8,7 +8,7 @@ report_year <- 2023
 # This file reads the data, and potentially pulls a lot of data from Spotify
 
 # Set this to true to call Spotify API
-force_refresh <- TRUE
+force_refresh <- FALSE
 
 
 if (force_refresh) {
@@ -284,7 +284,7 @@ for(user_id in user$id) {
     select(
       artist.id, current_rank, rank_diff, artist_name, first_listen, 
       distinct_tracks, current_plays, all_plays, artist_popularity, followers, 
-      artist_url
+      artist_url, artist_image_url
     )
   
   
@@ -312,7 +312,7 @@ for(user_id in user$id) {
     select(
       album.id, current_rank, rank_diff, album_name, artist_names, first_listen, 
       distinct_tracks, current_plays, all_plays, album_popularity, release_year, 
-      album_url
+      album_url, album_image_url
     )
   
   
@@ -481,7 +481,7 @@ for(user_id in user$id) {
   
   quarto_render(
     'spotify_user_report.qmd',
-    output_file = paste0('spotify_report', current_user$display_name, '.html')
+    output_file = paste0('spotify_report_', current_user$display_name, '.html')
   )
 
 }

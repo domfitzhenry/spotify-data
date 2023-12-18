@@ -3,8 +3,8 @@ title: 'Spotify Music Data'
 format:
   html: 
     embed-resources: true
+    default-image-extension: ''
     theme: cyborg
-    cap-location: top 
     page-layout: full
     fontsize: 16px
 editor: visual
@@ -235,6 +235,8 @@ options(
 ```
 
 ::: text-center
+`r if(!is.na(current_user$user_image)) paste0('![](', current_user$user_image, '){style="width: 300px; height: 300px; object-fit: cover; border-radius: 50%;"}')`
+
 # `r current_user$display_name`
 
 [`r pretty_seconds(current_duration, 'minute')`]{style="font-size: 60pt"}\
@@ -265,6 +267,7 @@ Over the lifetime of your Spotify account, this has been a total of:
 #| label: git-calendar
 #| fig-align: center
 #| fig-cap: "Daily listening duration heatmap"
+#| cap-location: top 
 #| fig-width: 13.5
 #| fig-height: 2.7
 #| fig-format: svg
@@ -353,6 +356,7 @@ plays_by_date %>%
 #| fig-width: 3
 #| fig-height: 3
 #| fig-cap: "Activity by time of day"
+#| cap-location: top 
 #| fig-format: svg
 #| dev.args: !expr 'list(bg = bg_col)'
 
@@ -387,7 +391,12 @@ plays_by_hour %>%
 
 ## Artists
 
-A list of all artists that you have streamed at least 5 times in the lifetime of your account. Blue circles indicate new entries in the last year, while an arrow indicates how the ranking has changed since the year before - hover for a tooltip showing the change.
+::: text-center
+### Top Artist
+
+![`r top_artists[1, 'artist_name']`](`r top_artists[1, 'artist_image_url']`){style="width: 400px; height: 400px; margin-left: auto; margin-right: auto"}
+
+:::
 
 ```{r}
 #| label: top-artists-table
@@ -454,7 +463,8 @@ reactable(
     
     artist_popularity = colDef(show = FALSE),
     followers = colDef(show = FALSE),
-    artist_url = colDef(show = FALSE)
+    artist_url = colDef(show = FALSE),
+    artist_image_url = colDef(show = FALSE)
   
   ),
   language = reactableLang(
@@ -468,11 +478,9 @@ reactable(
 
 ```
 
-\
+*A list of all artists that you have streamed at least 5 times in the lifetime of your account. Blue circles indicate new entries in the last year, while an arrow indicates how the ranking has changed since the year before - hover for a tooltip showing the change.*
 
 ### Popularity
-
-The popularity of your top 10 artists and a couple of artists with the most followers. Bubble size represents the number of followers while the axes show how popular the artist is with you versus the world.
 
 ```{r}
 #| label: artist-popularity-bubble
@@ -499,16 +507,13 @@ artist_annotation %>%
   ggplot(
     aes(y = scales::rescale(you_popularity, c(0, 100)), x = artist_popularity)
     ) +
-  geom_jitter(
-    aes(size = followers), colour = spotify_green, alpha = 0.6, 
-    width = 0.5, height = 0
-    ) +
+  geom_point(aes(size = followers), colour = spotify_green, alpha = 0.6) +
   geom_text_repel(
     data = artist_annotation,
     aes(label = artist_name), size = 3, colour = txt_col
     ) +
   scale_x_continuous(
-    limits = c(0, 100), expand = expansion(mult = c(0, 0.05))
+    limits = c(0, 100), expand = expansion(mult = c(0, 0.05)),
     ) +
   scale_y_continuous(
     limits = c(0, 100),
@@ -544,9 +549,9 @@ artist_annotation %>%
 
 ```
 
-### Genres
+*The popularity of your top 10 artists and a couple of artists with the most followers. Bubble size represents the number of followers while the axes show how popular the artist is with you versus the world.*
 
-An interactive sunburst chart showing the genres most frequently associated with your top 200 artists. Making genres into a hierarchy based solely on their names doesn't work very well and the percentages are a bit dubious, but doesn't it look neat when you click on it...?
+### Genres
 
 ```{r}
 #| label: genre-sunburst
@@ -593,6 +598,8 @@ plot_ly(
 
 
 ```
+
+*An interactive sunburst chart showing the genres most frequently associated with your top 200 artists. Making genres into a hierarchy based solely on their names doesn't work very well and the percentages are a bit dubious, but doesn't it look neat when you click on it...?*
 
 ### Related Artists
 
@@ -641,9 +648,16 @@ reactable(
 
 ```
 
+\
+
 ## Albums
 
-A list of all albums that you have streamed at least 5 times in the lifetime of your account. Blue circles indicate new entries in the last year, while an arrow indicates how the ranking has changed since the year before - hover for a tooltip showing the change.
+::: text-center
+### Top Album
+
+![`r top_albums[1, 'album_name']`](`r top_albums[1, 'album_image_url']`){style="width: 400px; height: 400px; margin-left: auto; margin-right: auto"}
+
+:::
 
 ```{r}
 #| label: top-albums-table
@@ -710,7 +724,8 @@ reactable(
     
     album_popularity = colDef(show = FALSE),
     release_year = colDef(show = FALSE),
-    album_url = colDef(show = FALSE)
+    album_url = colDef(show = FALSE),
+    album_image_url = colDef(show = FALSE)
   
   ),
   language = reactableLang(
@@ -724,11 +739,11 @@ reactable(
 
 ```
 
+*A list of all albums that you have streamed at least 5 times in the lifetime of your account. Blue circles indicate new entries in the last year, while an arrow indicates how the ranking has changed since the year before - hover for a tooltip showing the change.*
+
 \
 
 ##### Release Years
-
-The number of distinct albums by release year with at least one track played in the last year. The intensity of the green indicates the number of plays.
 
 ```{r}
 #| label: album-release-bars
@@ -781,6 +796,8 @@ top_albums %>%
 
 
 ```
+
+*The number of distinct albums by release year with at least one track played in the last year. The intensity of the green indicates the number of plays.*
 
 ## Tracks
 
@@ -872,8 +889,6 @@ Spotify derives a series of measures based on an audio analysis of the track. Th
 
 Danceability describes how suitable a track is for dancing based on a combination of musical elements including tempo, rhythm stability, beat strength, and overall regularity.
 
-`r build_measure_table('danceability')`
-
 ```{r}
 #| label: track-features-danceability
 #| fig-width: 13.5
@@ -884,7 +899,7 @@ Danceability describes how suitable a track is for dancing based on a combinatio
 user_track_features %>%
   ggplot(aes(x = danceability, y = month_played, group = month_played)) +
   geom_density_ridges(colour = faint_col, fill = spotify_green, na.rm = TRUE) +
-  scale_x_continuous(breaks = c(0, 1), labels = c('Low', 'High')) +
+  scale_x_continuous(breaks = c(0, 1), labels = NULL) +
   theme_ridges(grid = FALSE, font_size = 10) +
   theme(
     axis.text = element_text(colour = txt_light_col),
@@ -895,11 +910,11 @@ user_track_features %>%
   )
 ```
 
+`r build_measure_table('danceability')`
+
 ##### Energy
 
 Energy represents a perceptual measure of intensity and activity. Typically, energetic tracks feel fast, loud, and noisy. For example, death metal has high energy, while a Bach prelude scores low on the scale. Perceptual features contributing to this attribute include dynamic range, perceived loudness, timbre, onset rate, and general entropy.
-
-`r build_measure_table('energy')`
 
 ```{r}
 #| label: track-features-energy
@@ -911,7 +926,7 @@ Energy represents a perceptual measure of intensity and activity. Typically, ene
 user_track_features %>%
   ggplot(aes(x = energy, y = month_played, group = month_played)) +
   geom_density_ridges(colour = faint_col, fill = spotify_green, na.rm = TRUE) +
-  scale_x_continuous(breaks = c(0, 1), labels = c('Low', 'High')) +
+  scale_x_continuous(breaks = c(0, 1), labels = NULL) +
   theme_ridges(grid = FALSE, font_size = 10) +
   theme(
     axis.text = element_text(colour = txt_light_col),
@@ -922,11 +937,11 @@ user_track_features %>%
   )
 ```
 
+`r build_measure_table('energy')`
+
 ##### Valence
 
 Valence represents the musical positiveness conveyed by a track. Tracks with high valence sound more positive (e.g. happy, cheerful, euphoric), while tracks with low valence sound more negative (e.g. sad, depressed, angry).
-
-`r build_measure_table('valence')`
 
 ```{r}
 #| label: track-features-valence
@@ -939,7 +954,7 @@ Valence represents the musical positiveness conveyed by a track. Tracks with hig
 user_track_features %>%
   ggplot(aes(x = valence, y = month_played, group = month_played)) +
   geom_density_ridges(colour = faint_col, fill = spotify_green, na.rm = TRUE) +
-  scale_x_continuous(breaks = c(0, 1), labels = c('Low', 'High')) +
+  scale_x_continuous(breaks = c(0, 1), labels = NULL) +
   theme_ridges(grid = FALSE, font_size = 10) +
   theme(
     axis.text = element_text(colour = txt_light_col),
@@ -951,3 +966,5 @@ user_track_features %>%
 
 
 ```
+
+`r build_measure_table('valence')`
