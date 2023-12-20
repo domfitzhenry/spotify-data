@@ -34,7 +34,7 @@ for(user_id in user$id) {
 
 
   user_plays <- plays %>%
-    filter(username == user_id, year(track_start) <= report_year)) %>%
+    filter(username == user_id, year(track_start) <= report_year) %>%
     inner_join(track, by = 'track.id') %>%
     inner_join(album, by = 'album.id', suffix = c('_track', '_album')) %>%
     left_join(track_features, by = 'track.id')
