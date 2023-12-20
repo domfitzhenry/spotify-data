@@ -1,13 +1,12 @@
 ---
-title: 'Spotify Music Data'
 format:
   html: 
     embed-resources: true
     default-image-extension: ''
     theme: cyborg
+    mainfont: 'Work Sans, Helvetica Neue, Helvetica, Arial, sans-serif'
     page-layout: full
     fontsize: 16px
-editor: visual
 echo: false
 ---
 
@@ -88,7 +87,7 @@ trend_indicator <- function(value = 0) {
 # Function that takes a measure as a parameter, and returns a reactable table
 # formatted with the lowest n values on the left and the highest n values on
 # the right
-build_measure_table <- function(measure, n_val = 5L){
+build_measure_table <- function(measure, n_val = 10L){
   
   m0 <- top_track_features %>%
     slice_min(order_by = .data[[measure]], with_ties = FALSE, n = n_val) %>%
@@ -129,7 +128,9 @@ build_measure_table <- function(measure, n_val = 5L){
           cell = function(value, index) {
             tags$a(
               href = m[index, 'low_url'],
-              target = "_blank", value
+              target = "_blank", 
+              rel="noopener noreferrer",
+              value
             )
           },
           minWidth = 200
@@ -143,7 +144,9 @@ build_measure_table <- function(measure, n_val = 5L){
           cell = function(value, index) {
             tags$a(
               href = m[index, 'high_url'],
-              target = "_blank", value
+              target = "_blank", 
+              rel="noopener noreferrer",
+              value
             )
           },
           minWidth = 200
@@ -234,13 +237,27 @@ options(
   
 ```
 
+:::: {style='display: flex'}
+
+::: {style='width: 250'}
+![](Spotify_Logo_RGB_White.png){width=200} 
+
+:::
+
+::: {style="line-height: 60px; font-size:40px; margin-left:8px"}
+music data [`r report_year`]{.text-light}
+
+:::
+
+::::
+
 ::: text-center
 `r if(!is.na(current_user$user_image)) paste0('![](', current_user$user_image, '){style="width: 300px; height: 300px; object-fit: cover; border-radius: 50%;"}')`
 
 # `r current_user$display_name`
 
 [`r pretty_seconds(current_duration, 'minute')`]{style="font-size: 60pt"}\
-of music listened to in the last year, which is cumulatively over `r pretty_seconds(current_duration, 'day')`!
+of music listened to in `r report_year`, which is cumulatively over `r pretty_seconds(current_duration, 'day')`!
 
 [`r current_streams`]{style="font-size: 50pt"}\
 **streams** of
@@ -261,6 +278,7 @@ Over the lifetime of your Spotify account, this has been a total of:
 `r total_tracks` tracks\
 `r total_albums` albums\
 `r total_artists` artists\
+
 :::
 
 ```{r}
@@ -346,7 +364,7 @@ plays_by_date %>%
 ::: {layout="[60, -5, 30, -5]"}
 ##### Listening Sessions
 
--   Of the `r current_sessions` times you decided to listen to music on Spotify last year, you listened to an average (median) `r current_session_track_avg` tracks for `r pretty_seconds(current_session_duration_avg)`.
+-   Of the `r current_sessions` times you decided to listen to music on Spotify in `r report_year`, you listened to an average (median) `r current_session_track_avg` tracks for `r pretty_seconds(current_session_duration_avg)`.
 -   Your longest session started on `r current_session_max_date`, when you listened to `r current_session_max_tracks` tracks for over `r pretty_seconds(current_session_max_duration)`.
 -   Over all time, you've had `r total_sessions` listening sessions averaging `r total_session_track_avg` tracks for around `r pretty_seconds(total_session_duration_avg)` per session.
 
@@ -394,9 +412,11 @@ plays_by_hour %>%
 ::: text-center
 ### Top Artist
 
-![`r top_artists[1, 'artist_name']`](`r top_artists[1, 'artist_image_url']`){style="width: 400px; height: 400px; margin-left: auto; margin-right: auto"}
+![`r top_artists[1, ]$artist_name`](`r top_artists[1, ]$artist_image_url`){style="width: 400px; height: 400px; margin-left: auto; margin-right: auto"}
 
 :::
+
+\
 
 ```{r}
 #| label: top-artists-table
@@ -429,7 +449,9 @@ reactable(
       cell = function(value, index) {
         tags$a(
           href = pull(top_artists[index, 'artist_url']), 
-          target = "_blank", value
+          target = "_blank", 
+              rel="noopener noreferrer",
+              value
           )
       },
       minWidth = 200
@@ -447,7 +469,7 @@ reactable(
       class = 'number'
     ),
     current_plays = colDef(
-      name = 'Last Year',
+      name = as.character(report_year),
       format = colFormat(separators = TRUE),
       defaultSortOrder = 'desc',
       width = 100,
@@ -478,7 +500,7 @@ reactable(
 
 ```
 
-*A list of all artists that you have streamed at least 5 times in the lifetime of your account. Blue circles indicate new entries in the last year, while an arrow indicates how the ranking has changed since the year before - hover for a tooltip showing the change.*
+*A list of all artists that you have streamed at least 5 times in the lifetime of your account. Blue circles indicate new entries, while an arrow indicates how the ranking has changed since the year before - hover for a tooltip showing the change.*
 
 ### Popularity
 
@@ -603,7 +625,7 @@ plot_ly(
 
 ### Related Artists
 
-Based on your top artists over the last year, here are some suggestions that you might not have heard yet (at least not on this account).
+Based on your top artists in `r report_year`, here are some suggestions that you might not have heard yet (at least not on this account).
 
 ```{r}
 #| label: related-artists-table
@@ -623,7 +645,9 @@ reactable(
       cell = function(value, index) {
         tags$a(
           href = pull(suggested_artists[index, 'related_artist_url']), 
-          target = "_blank", value
+          target = "_blank", 
+              rel="noopener noreferrer",
+              value
           )
       },
       minWidth = 100
@@ -655,9 +679,11 @@ reactable(
 ::: text-center
 ### Top Album
 
-![`r top_albums[1, 'album_name']`](`r top_albums[1, 'album_image_url']`){style="width: 400px; height: 400px; margin-left: auto; margin-right: auto"}
+![`r top_albums[1, ]$album_name`](`r top_albums[1, ]$album_image_url`){style="width: 400px; height: 400px; margin-left: auto; margin-right: auto"}
 
 :::
+
+\
 
 ```{r}
 #| label: top-albums-table
@@ -691,7 +717,9 @@ reactable(
       cell = function(value, index) {
         tags$a(
           href = pull(top_albums[index, 'album_url']), 
-          target = "_blank", value
+          target = "_blank", 
+              rel="noopener noreferrer",
+              value
         )
       },
       minWidth = 200
@@ -708,7 +736,7 @@ reactable(
       width = 120
     ),
     current_plays = colDef(
-      name = 'Last Year',
+      name = as.character(report_year),
       format = colFormat(separators = TRUE),
       defaultSortOrder = 'desc',
       width = 100,
@@ -739,7 +767,7 @@ reactable(
 
 ```
 
-*A list of all albums that you have streamed at least 5 times in the lifetime of your account. Blue circles indicate new entries in the last year, while an arrow indicates how the ranking has changed since the year before - hover for a tooltip showing the change.*
+*A list of all albums that you have streamed at least 5 times in the lifetime of your account. Blue circles indicate new entries, while an arrow indicates how the ranking has changed since the year before - hover for a tooltip showing the change.*
 
 \
 
@@ -797,7 +825,7 @@ top_albums %>%
 
 ```
 
-*The number of distinct albums by release year with at least one track played in the last year. The intensity of the green indicates the number of plays.*
+*The number of distinct albums by release year with at least one track played in `r report_year`. The intensity of the green indicates the number of plays.*
 
 ## Tracks
 
@@ -833,7 +861,9 @@ reactable(
       cell = function(value, index) {
         tags$a(
           href = pull(top_tracks[index, 'track_url']), 
-          target = "_blank", value
+          target = "_blank", 
+              rel="noopener noreferrer",
+              value
         )
       },
       minWidth = 200
@@ -849,7 +879,7 @@ reactable(
       width = 120
     ),
     current_plays = colDef(
-      name = 'Last Year',
+      name = as.character(report_year),
       format = colFormat(separators = TRUE),
       defaultSortOrder = 'desc',
       width = 100,
@@ -968,3 +998,7 @@ user_track_features %>%
 ```
 
 `r build_measure_table('valence')`
+
+------------------------------------------------------------------------
+
+[![](github-mark-white.png){width=25 fig-align=right}](https://github.com/domfitzhenry/spotify-data)

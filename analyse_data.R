@@ -6,8 +6,7 @@ library(quarto)
 report_year <- 2023
 
 # This file reads the data, and potentially pulls a lot of data from Spotify
-
-# Set this to true to call Spotify API
+# Set this to true to call Spotify API when new users are added.
 force_refresh <- FALSE
 
 
@@ -35,7 +34,7 @@ for(user_id in user$id) {
 
 
   user_plays <- plays %>%
-    filter(username == user_id) %>%
+    filter(username == user_id, year(track_start <= report_year)) %>%
     inner_join(track, by = 'track.id') %>%
     inner_join(album, by = 'album.id', suffix = c('_track', '_album')) %>%
     left_join(track_features, by = 'track.id')
@@ -471,8 +470,8 @@ for(user_id in user$id) {
   
   
   save(
-    current_user, play_summary, plays_by_date, plays_by_hour, top_tracks, 
-    top_artists, top_albums, genre_map, user_track_features,
+    report_year, current_user, play_summary, plays_by_date, plays_by_hour, 
+    top_tracks, top_artists, top_albums, genre_map, user_track_features,
     top_track_features, suggested_artists,
     file = 'data/user_data.RData'
   )
@@ -481,7 +480,8 @@ for(user_id in user$id) {
   
   quarto_render(
     'spotify_user_report.qmd',
-    output_file = paste0('spotify_report_', current_user$display_name, '.html')
+    output_file = paste0(report_year, '_spotify_report_', 
+                         current_user$display_name, '.html')
   )
 
 }
